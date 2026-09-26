@@ -1,0 +1,590 @@
+// dbdiagram.io DBML
+// Logical databases are separated by comments. There are NO cross-database foreign keys.
+// IDs shared across services are logical UUID references only.
+
+// =========================
+// IdentityDb
+// =========================
+
+Table IdentityDb_Roles {
+  Id uuid [pk]
+  Code varchar(50) [not null, unique]
+  Name varchar(100) [not null]
+  Description varchar(500)
+  CreatedAt datetime [not null]
+}
+
+Table IdentityDb_Users {
+  Id uuid [pk]
+  RoleId uuid [not null, ref: > IdentityDb_Roles.Id]
+  ExternalAuthId varchar(200)
+  Email varchar(255) [not null, unique]
+  FullName varchar(200) [not null]
+  Phone varchar(50)
+  Status varchar(30) [not null]
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+  VersionNo int [not null]
+}
+
+Table IdentityDb_RefreshTokens {
+  Id uuid [pk]
+  UserId uuid [not null, ref: > IdentityDb_Users.Id]
+  TokenHash varchar(500) [not null]
+  ExpiresAt datetime [not null]
+  RevokedAt datetime
+  CreatedAt datetime [not null]
+}
+
+// =========================
+// BookingDb
+// =========================
+
+Table BookingDb_Customers {
+  Id uuid [pk]
+  CustomerCode varchar(50) [not null, unique]
+  Name varchar(255) [not null]
+  CustomerType varchar(30) [not null]
+  ContactPerson varchar(200)
+  Phone varchar(50)
+  Email varchar(255)
+  Address varchar(500)
+  CountryId uuid
+  Status varchar(30) [not null]
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+  VersionNo int [not null]
+}
+
+Table BookingDb_Horses {
+  Id uuid [pk]
+  HorseCode varchar(50) [not null, unique]
+  OwnerCustomerId uuid [not null, ref: > BookingDb_Customers.Id]
+  HorseName varchar(200) [not null]
+  RegistrationNumber varchar(100)
+  PassportNumber varchar(100)
+  Breed varchar(100)
+  Sex varchar(30)
+  DateOfBirth date
+  Color varchar(100)
+  CountryOfOriginId uuid
+  SpecialRequirements varchar(1000)
+  Status varchar(30) [not null]
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+  VersionNo int [not null]
+}
+
+Table BookingDb_TransportRequests {
+  Id uuid [pk]
+  RequestNo varchar(50) [not null, unique]
+  CustomerId uuid [not null, ref: > BookingDb_Customers.Id]
+  CreatedByUserId uuid [not null]
+  AssignedManagerUserId uuid
+  OriginLocationId uuid
+  DestinationLocationId uuid
+  RequestedDepartureAt datetime [not null]
+  RequestedArrivalAt datetime
+  PreferredTransportMode varchar(30)
+  SpecialRequirements varchar(2000)
+  Notes varchar(2000)
+  Status varchar(40) [not null]
+  RejectionReason varchar(1000)
+  SubmittedAt datetime
+  ReviewedAt datetime
+  ApprovedAt datetime
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+  VersionNo int [not null]
+}
+
+Table BookingDb_TransportRequestHorses {
+  Id uuid [pk]
+  RequestId uuid [not null, ref: > BookingDb_TransportRequests.Id]
+  HorseId uuid [not null, ref: > BookingDb_Horses.Id]
+  SpecialHandling varchar(1000)
+  CreatedAt datetime [not null]
+
+  Indexes {
+    (RequestId, HorseId) [unique]
+  }
+}
+
+Table BookingDb_TransportOrders {
+  Id uuid [pk]
+  OrderNo varchar(50) [not null, unique]
+  RequestId uuid [not null, ref: > BookingDb_TransportRequests.Id, unique]
+  ApprovedByUserId uuid [not null]
+  ApprovedAt datetime [not null]
+  Status varchar(40) [not null]
+  QuotedAmount decimal(18,2)
+  CurrencyCode varchar(10)
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+  VersionNo int [not null]
+}
+
+// =========================
+// ComplianceDb
+// External IDs are UUIDs with NO cross-db refs.
+// =========================
+
+Table ComplianceDb_DocumentTypes {
+  Id uuid [pk]
+  Code varchar(50) [not null, unique]
+  Name varchar(200) [not null]
+  Scope varchar(30) [not null]
+  Description varchar(1000)
+  DefaultValidityDays int
+  Active boolean [not null]
+}
+
+Table ComplianceDb_Documents {
+  Id uuid [pk]
+  DocumentNo varchar(50) [not null, unique]
+  DocumentTypeId uuid [not null, ref: > ComplianceDb_DocumentTypes.Id]
+  HorseId uuid
+  RequestId uuid
+  TripId uuid
+  UploadedByUserId uuid [not null]
+  FileName varchar(255) [not null]
+  FileUrl varchar(1000) [not null]
+  FileSize bigint
+  MimeType varchar(100)
+  IssueDate date
+  ExpiryDate date
+  IssuingAuthority varchar(255)
+  Status varchar(40) [not null]
+  CurrentReviewNote varchar(2000)
+  UploadedAt datetime [not null]
+  UpdatedAt datetime [not null]
+  VersionNo int [not null]
+}
+
+Table ComplianceDb_DocumentReviews {
+  Id uuid [pk]
+  DocumentId uuid [not null, ref: > ComplianceDb_Documents.Id]
+  ReviewerUserId uuid [not null]
+  Status varchar(40) [not null]
+  Comment varchar(2000)
+  ReviewedAt datetime [not null]
+}
+
+Table ComplianceDb_RegulationRules {
+  Id uuid [pk]
+  RuleCode varchar(50) [not null, unique]
+  OriginCountryId uuid [not null]
+  DestinationCountryId uuid [not null]
+  BorderPointId uuid
+  Title varchar(255) [not null]
+  Description varchar(2000)
+  QuarantineRequired boolean [not null]
+  CustomsRequired boolean [not null]
+  InspectionRequired boolean [not null]
+  EffectiveFrom date [not null]
+  EffectiveTo date
+  Active boolean [not null]
+}
+
+Table ComplianceDb_RegulationDocumentRequirements {
+  Id uuid [pk]
+  RegulationRuleId uuid [not null, ref: > ComplianceDb_RegulationRules.Id]
+  DocumentTypeId uuid [not null, ref: > ComplianceDb_DocumentTypes.Id]
+  Required boolean [not null]
+  MinValidityDays int
+  AuthorityName varchar(255)
+  Notes varchar(1000)
+
+  Indexes {
+    (RegulationRuleId, DocumentTypeId) [unique]
+  }
+}
+
+Table ComplianceDb_ClearanceCases {
+  Id uuid [pk]
+  CaseNo varchar(50) [not null, unique]
+  TripId uuid [not null]
+  RouteLegId uuid
+  CountryId uuid [not null]
+  BorderPointId uuid
+  AuthorityName varchar(255) [not null]
+  ReferenceNumber varchar(100)
+  Status varchar(40) [not null]
+  SubmittedAt datetime
+  ReviewedAt datetime
+  CompletedAt datetime
+  RejectionReason varchar(2000)
+  Notes varchar(2000)
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+}
+
+Table ComplianceDb_ClearanceCaseDocuments {
+  Id uuid [pk]
+  ClearanceCaseId uuid [not null, ref: > ComplianceDb_ClearanceCases.Id]
+  DocumentId uuid [not null, ref: > ComplianceDb_Documents.Id]
+  Required boolean [not null]
+  SubmittedAt datetime
+  Status varchar(40) [not null]
+
+  Indexes {
+    (ClearanceCaseId, DocumentId) [unique]
+  }
+}
+
+// =========================
+// PlanningDb
+// =========================
+
+Table PlanningDb_Countries {
+  Id uuid [pk]
+  IsoCode varchar(10) [not null, unique]
+  Name varchar(150) [not null]
+  Active boolean [not null]
+}
+
+Table PlanningDb_Locations {
+  Id uuid [pk]
+  LocationCode varchar(50) [unique]
+  Name varchar(255) [not null]
+  LocationType varchar(40) [not null]
+  Address varchar(500)
+  City varchar(150)
+  CountryId uuid [not null, ref: > PlanningDb_Countries.Id]
+  Latitude decimal(10,7)
+  Longitude decimal(10,7)
+  Active boolean [not null]
+}
+
+Table PlanningDb_TransportTrips {
+  Id uuid [pk]
+  TripNo varchar(50) [not null, unique]
+  OrderId uuid [not null]
+  Status varchar(40) [not null]
+  PlannedDepartureAt datetime
+  PlannedArrivalAt datetime
+  ActualDepartureAt datetime
+  ActualArrivalAt datetime
+  CurrentLocationId uuid [ref: > PlanningDb_Locations.Id]
+  CurrentLatitude decimal(10,7)
+  CurrentLongitude decimal(10,7)
+  CurrentEta datetime
+  DelayMinutes int [not null]
+  OnTime boolean
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+  VersionNo int [not null]
+}
+
+Table PlanningDb_Vehicles {
+  Id uuid [pk]
+  VehicleCode varchar(50) [not null, unique]
+  PlateNumber varchar(50) [not null, unique]
+  VehicleType varchar(100) [not null]
+  HorseCapacity int [not null]
+  StallCapacity int [not null]
+  TemperatureControlled boolean [not null]
+  Status varchar(40) [not null]
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+  VersionNo int [not null]
+}
+
+Table PlanningDb_Stalls {
+  Id uuid [pk]
+  StallCode varchar(50) [not null, unique]
+  StallType varchar(100)
+  Capacity int [not null]
+  Active boolean [not null]
+  Notes varchar(1000)
+}
+
+Table PlanningDb_Airlines {
+  Id uuid [pk]
+  AirlineCode varchar(20) [not null, unique]
+  Name varchar(200) [not null]
+  Active boolean [not null]
+}
+
+Table PlanningDb_FlightBookings {
+  Id uuid [pk]
+  BookingReference varchar(100) [not null, unique]
+  AirlineId uuid [not null, ref: > PlanningDb_Airlines.Id]
+  FlightNumber varchar(50) [not null]
+  OriginAirportId uuid [not null, ref: > PlanningDb_Locations.Id]
+  DestinationAirportId uuid [not null, ref: > PlanningDb_Locations.Id]
+  ScheduledDepartureAt datetime [not null]
+  ScheduledArrivalAt datetime [not null]
+  ActualDepartureAt datetime
+  ActualArrivalAt datetime
+}
+
+Table PlanningDb_RoutePlans {
+  Id uuid [pk]
+  TripId uuid [not null, ref: > PlanningDb_TransportTrips.Id, unique]
+  ActiveVersionId uuid
+  CreatedByUserId uuid [not null]
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+}
+
+Table PlanningDb_RoutePlanVersions {
+  Id uuid [pk]
+  RoutePlanId uuid [not null, ref: > PlanningDb_RoutePlans.Id]
+  VersionNo int [not null]
+  Status varchar(40) [not null]
+  Reason varchar(2000)
+  TotalDistanceKm decimal(12,2)
+  EstimatedDurationMinutes int
+  PlannedDepartureAt datetime
+  PlannedArrivalAt datetime
+  AdditionalCost decimal(18,2) [not null]
+  CurrencyCode varchar(10)
+  CreatedByUserId uuid [not null]
+  ApprovedByUserId uuid
+  ApprovedAt datetime
+  CreatedAt datetime [not null]
+
+  Indexes {
+    (RoutePlanId, VersionNo) [unique]
+  }
+}
+
+Table PlanningDb_RouteLegs {
+  Id uuid [pk]
+  RoutePlanVersionId uuid [not null, ref: > PlanningDb_RoutePlanVersions.Id]
+  SequenceNo int [not null]
+  OriginLocationId uuid [not null, ref: > PlanningDb_Locations.Id]
+  DestinationLocationId uuid [not null, ref: > PlanningDb_Locations.Id]
+  TransportMode varchar(30) [not null]
+  PlannedDepartureAt datetime
+  PlannedArrivalAt datetime
+  ActualDepartureAt datetime
+  ActualArrivalAt datetime
+  DistanceKm decimal(12,2)
+  Status varchar(40) [not null]
+
+  Indexes {
+    (RoutePlanVersionId, SequenceNo) [unique]
+  }
+}
+
+Table PlanningDb_Checkpoints {
+  Id uuid [pk]
+  RouteLegId uuid [not null, ref: > PlanningDb_RouteLegs.Id]
+  SequenceNo int [not null]
+  LocationId uuid [not null, ref: > PlanningDb_Locations.Id]
+  Type varchar(40) [not null]
+  PlannedArrivalAt datetime
+  PlannedDepartureAt datetime
+  ActualArrivalAt datetime
+  ActualDepartureAt datetime
+  Status varchar(40) [not null]
+
+  Indexes {
+    (RouteLegId, SequenceNo) [unique]
+  }
+}
+
+Table PlanningDb_TripLegAssignments {
+  Id uuid [pk]
+  RouteLegId uuid [not null, ref: > PlanningDb_RouteLegs.Id]
+  VehicleId uuid [ref: > PlanningDb_Vehicles.Id]
+  FlightBookingId uuid [ref: > PlanningDb_FlightBookings.Id]
+  AssignedByUserId uuid [not null]
+  AssignedAt datetime [not null]
+}
+
+Table PlanningDb_StaffAssignments {
+  Id uuid [pk]
+  TripId uuid [not null, ref: > PlanningDb_TransportTrips.Id]
+  RouteLegId uuid [ref: > PlanningDb_RouteLegs.Id]
+  UserId uuid [not null]
+  Role varchar(40) [not null]
+  AssignedAt datetime [not null]
+  ReleasedAt datetime
+}
+
+Table PlanningDb_HorseLegAssignments {
+  Id uuid [pk]
+  TripId uuid [not null, ref: > PlanningDb_TransportTrips.Id]
+  HorseId uuid [not null]
+  RouteLegId uuid [not null, ref: > PlanningDb_RouteLegs.Id]
+  StallId uuid [ref: > PlanningDb_Stalls.Id]
+  BoardedAt datetime
+  UnboardedAt datetime
+}
+
+// =========================
+// TrackingDb
+// =========================
+
+Table TrackingDb_TripEvents {
+  Id uuid [pk]
+  TripId uuid [not null]
+  RouteLegId uuid
+  CheckpointId uuid
+  EventType varchar(50) [not null]
+  EventTime datetime [not null]
+  Latitude decimal(10,7)
+  Longitude decimal(10,7)
+  Note varchar(2000)
+  CreatedByUserId uuid [not null]
+  CreatedAt datetime [not null]
+}
+
+Table TrackingDb_TripLocations {
+  Id uuid [pk]
+  TripId uuid [not null]
+  RecordedAt datetime [not null]
+  Latitude decimal(10,7) [not null]
+  Longitude decimal(10,7) [not null]
+  SpeedKmh decimal(8,2)
+  Heading decimal(8,2)
+  Source varchar(50)
+}
+
+Table TrackingDb_HorseHealthLogs {
+  Id uuid [pk]
+  TripId uuid [not null]
+  HorseId uuid [not null]
+  CheckpointId uuid
+  RecordedByUserId uuid [not null]
+  RecordedAt datetime [not null]
+  Condition varchar(50) [not null]
+  StressLevel varchar(30)
+  Temperature decimal(5,2)
+  Appetite varchar(100)
+  Medication varchar(1000)
+  Observation varchar(2000)
+  ImageUrl varchar(1000)
+  HealthAlert boolean [not null]
+}
+
+// =========================
+// IncidentDb
+// =========================
+
+Table IncidentDb_Incidents {
+  Id uuid [pk]
+  IncidentNo varchar(50) [not null, unique]
+  TripId uuid [not null]
+  RouteLegId uuid
+  CheckpointId uuid
+  HorseId uuid
+  ReportedByUserId uuid [not null]
+  Type varchar(50) [not null]
+  Severity varchar(30) [not null]
+  Status varchar(30) [not null]
+  LocationId uuid
+  Latitude decimal(10,7)
+  Longitude decimal(10,7)
+  Title varchar(255) [not null]
+  Description varchar(4000) [not null]
+  OccurredAt datetime [not null]
+  ResolvedAt datetime
+  ResolutionNote varchar(4000)
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+}
+
+Table IncidentDb_IncidentAttachments {
+  Id uuid [pk]
+  IncidentId uuid [not null, ref: > IncidentDb_Incidents.Id]
+  FileName varchar(255) [not null]
+  FileUrl varchar(1000) [not null]
+  MimeType varchar(100)
+  UploadedByUserId uuid [not null]
+  UploadedAt datetime [not null]
+}
+
+// =========================
+// HandoverDb
+// =========================
+
+Table HandoverDb_HandoverRecords {
+  Id uuid [pk]
+  HandoverNo varchar(50) [not null, unique]
+  TripId uuid [not null, unique]
+  Status varchar(40) [not null]
+  ReceiverName varchar(200)
+  ReceiverPhone varchar(50)
+  ReceiverEmail varchar(255)
+  HandoverLocationId uuid
+  ScheduledAt datetime
+  ActualAt datetime
+  Notes varchar(3000)
+  SignatureUrl varchar(1000)
+  CreatedByUserId uuid [not null]
+  CompletedByUserId uuid
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+}
+
+Table HandoverDb_HandoverHorses {
+  Id uuid [pk]
+  HandoverId uuid [not null, ref: > HandoverDb_HandoverRecords.Id]
+  HorseId uuid [not null]
+  Status varchar(30) [not null]
+  Condition varchar(2000)
+  IssueNote varchar(2000)
+  EvidenceImageUrl varchar(1000)
+  AcceptedAt datetime
+
+  Indexes {
+    (HandoverId, HorseId) [unique]
+  }
+}
+
+Table HandoverDb_TripCostItems {
+  Id uuid [pk]
+  TripId uuid [not null]
+  Category varchar(100) [not null]
+  Description varchar(1000)
+  Amount decimal(18,2) [not null]
+  CurrencyCode varchar(10) [not null]
+  Status varchar(30) [not null]
+  IncurredAt datetime
+  CreatedByUserId uuid [not null]
+  CreatedAt datetime [not null]
+}
+
+Table HandoverDb_TripRevenueItems {
+  Id uuid [pk]
+  TripId uuid [not null]
+  Category varchar(100) [not null]
+  Description varchar(1000)
+  Amount decimal(18,2) [not null]
+  CurrencyCode varchar(10) [not null]
+  Status varchar(30) [not null]
+  RecognizedAt datetime
+  CreatedByUserId uuid [not null]
+  CreatedAt datetime [not null]
+}
+
+// =========================
+// NotificationDb
+// =========================
+
+Table NotificationDb_Notifications {
+  Id uuid [pk]
+  RecipientUserId uuid [not null]
+  Type varchar(50) [not null]
+  Title varchar(255) [not null]
+  Message varchar(2000) [not null]
+  ReferenceType varchar(100)
+  ReferenceId uuid
+  Status varchar(30) [not null]
+  ReadAt datetime
+  CreatedAt datetime [not null]
+}
+
+Table NotificationDb_DeviceTokens {
+  Id uuid [pk]
+  UserId uuid [not null]
+  Platform varchar(30) [not null]
+  Token varchar(1000) [not null, unique]
+  Active boolean [not null]
+  CreatedAt datetime [not null]
+  UpdatedAt datetime [not null]
+}
