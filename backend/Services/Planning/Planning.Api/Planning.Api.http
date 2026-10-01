@@ -1,6 +1,169 @@
-@Planning.Api_HostAddress = http://localhost:5022
+@PlanningApi_HostAddress = http://localhost:5022
+@actorId = 11111111-1111-1111-1111-111111111111
 
-GET {{Planning.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### 1. Master Data: Countries (Pagination supported)
+GET {{PlanningApi_HostAddress}}/api/v1/countries?page=0&pageSize=10
+
+### 2. Master Data: Create Country
+POST {{PlanningApi_HostAddress}}/api/v1/countries
+Content-Type: application/json
+
+{
+  "isoCode": "VN",
+  "name": "Vietnam",
+  "active": true
+}
+
+### 3. Master Data: Locations
+GET {{PlanningApi_HostAddress}}/api/v1/locations?page=0&pageSize=10
+
+### 4. Master Data: Vehicles
+GET {{PlanningApi_HostAddress}}/api/v1/vehicles?page=0&pageSize=10
+
+### 5. Master Data: Create Vehicle
+POST {{PlanningApi_HostAddress}}/api/v1/vehicles
+Content-Type: application/json
+
+{
+  "vehicleCode": "VHC-001",
+  "plateNumber": "51H-123.45",
+  "vehicleType": "HORSE_TRUCK",
+  "horseCapacity": 6,
+  "stallCapacity": 6,
+  "temperatureControlled": true,
+  "status": "AVAILABLE"
+}
+
+### 6. Master Data: Stalls
+GET {{PlanningApi_HostAddress}}/api/v1/stalls?page=0&pageSize=10
+
+### 7. Master Data: Airlines
+GET {{PlanningApi_HostAddress}}/api/v1/airlines?page=0&pageSize=10
+
+### 8. Master Data: Flight Bookings
+GET {{PlanningApi_HostAddress}}/api/v1/flight-bookings?page=0&pageSize=10
+
+### 9. Availability Queries (T09)
+GET {{PlanningApi_HostAddress}}/api/v1/availability/vehicles?vehicleId=00000000-0000-0000-0000-000000000001&from=2026-10-20T02:00:00Z&to=2026-10-20T08:00:00Z
 
 ###
+GET {{PlanningApi_HostAddress}}/api/v1/availability/stalls?stallId=00000000-0000-0000-0000-000000000001&from=2026-10-20T02:00:00Z&to=2026-10-20T08:00:00Z
+
+###
+GET {{PlanningApi_HostAddress}}/api/v1/availability/flights?flightBookingId=00000000-0000-0000-0000-000000000001&from=2026-10-20T02:00:00Z&to=2026-10-20T08:00:00Z
+
+### 10. Trip Creation (T10 - Idempotent by orderId)
+POST {{PlanningApi_HostAddress}}/api/v1/trips
+Content-Type: application/json
+
+{
+  "orderId": "22222222-2222-2222-2222-222222222222"
+}
+
+### 11. Create Route Plan
+POST {{PlanningApi_HostAddress}}/api/v1/trips/{{tripId}}/route-plans
+Content-Type: application/json
+
+{
+  "actorUserId": "{{actorId}}"
+}
+
+### 12. Get Route Plan Versions
+GET {{PlanningApi_HostAddress}}/api/v1/route-plans/{{routePlanId}}/versions
+
+### 13. Add Route Leg (Only when version is DRAFT)
+POST {{PlanningApi_HostAddress}}/api/v1/route-plan-versions/{{routePlanVersionId}}/legs
+Content-Type: application/json
+
+{
+  "sequenceNo": 1,
+  "originLocationId": "33333333-3333-3333-3333-333333333333",
+  "destinationLocationId": "44444444-4444-4444-4444-444444444444",
+  "mode": "ROAD",
+  "departureAt": "2026-10-20T02:00:00Z",
+  "arrivalAt": "2026-10-20T08:00:00Z",
+  "distanceKm": 150.5
+}
+
+### 14. Get Route Legs of Version
+GET {{PlanningApi_HostAddress}}/api/v1/route-plan-versions/{{routePlanVersionId}}/legs
+
+### 15. Add Checkpoint to Leg
+POST {{PlanningApi_HostAddress}}/api/v1/route-legs/{{routeLegId}}/checkpoints
+Content-Type: application/json
+
+{
+  "sequenceNo": 1,
+  "locationId": "55555555-5555-5555-5555-555555555555",
+  "type": "REST_STOP",
+  "arrivalAt": "2026-10-20T04:00:00Z",
+  "departureAt": "2026-10-20T04:30:00Z"
+}
+
+### 16. Assign Resource to Route Leg
+POST {{PlanningApi_HostAddress}}/api/v1/route-legs/{{routeLegId}}/assignments/resource
+Content-Type: application/json
+
+{
+  "vehicleId": "{{vehicleId}}",
+  "flightBookingId": null,
+  "assignedByUserId": "{{actorId}}"
+}
+
+### 17. Assign Staff (Driver or Escort) to Trip
+POST {{PlanningApi_HostAddress}}/api/v1/trips/{{tripId}}/staff-assignments
+Content-Type: application/json
+
+{
+  "legId": "{{routeLegId}}",
+  "userId": "{{actorId}}",
+  "role": "ESCORT"
+}
+
+### 18. Assign Horse and Stall to Trip
+POST {{PlanningApi_HostAddress}}/api/v1/trips/{{tripId}}/horse-assignments
+Content-Type: application/json
+
+{
+  "horseId": "66666666-6666-6666-6666-666666666666",
+  "legId": "{{routeLegId}}",
+  "stallId": "{{stallId}}"
+}
+
+### 19. Submit Route Plan Version (DRAFT -> PENDING_APPROVAL)
+POST {{PlanningApi_HostAddress}}/api/v1/route-plan-versions/{{routePlanVersionId}}/submit
+Content-Type: application/json
+
+{
+  "actorUserId": "{{actorId}}"
+}
+
+### 20. Approve Route Plan Version (PENDING_APPROVAL -> APPROVED)
+POST {{PlanningApi_HostAddress}}/api/v1/route-plan-versions/{{routePlanVersionId}}/approve
+Content-Type: application/json
+
+{
+  "actorUserId": "{{actorId}}"
+}
+
+### 21. Activate Route Plan Version (APPROVED -> ACTIVE)
+POST {{PlanningApi_HostAddress}}/api/v1/route-plan-versions/{{routePlanVersionId}}/activate
+Content-Type: application/json
+
+{
+  "actorUserId": "{{actorId}}"
+}
+
+### 22. Compliance Ready Event (T11)
+POST {{PlanningApi_HostAddress}}/api/v1/trips/{{tripId}}/compliance-ready
+
+### 23. Check Trip Readiness and Blockers (T11)
+GET {{PlanningApi_HostAddress}}/api/v1/trips/{{tripId}}/readiness
+
+### 24. Confirm Trip Ready (T11 - transitions to READY, publishes Planning.TripReady)
+POST {{PlanningApi_HostAddress}}/api/v1/trips/{{tripId}}/confirm-ready
+Content-Type: application/json
+
+{
+  "actorUserId": "{{actorId}}"
+}
