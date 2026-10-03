@@ -1,41 +1,53 @@
+using BuildingBlocks.Middleware;
+using Microsoft.EntityFrameworkCore;
+using Planning.Api;
+using Planning.Application.Abstractions;
+using Planning.Application.Services;
+using Planning.Infrastructure.Persistence;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+var planningConnection = builder.Configuration.GetConnectionString("PlanningDb");
+if (!string.IsNullOrWhiteSpace(planningConnection))
+{
+    builder.Services.AddPlanningPersistence(planningConnection);
+}
+else
+{
+    // Local memory fallback if SQL Server is not configured
+    builder.Services.AddDbContext<PlanningDbContext>(o => o.UseInMemoryDatabase("PlanningDb_LocalFallback"));
+    builder.Services.AddScoped<IPlanningDbContext>(sp => sp.GetRequiredService<PlanningDbContext>());
+    builder.Services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>));
+    builder.Services.AddScoped<IFleetMasterDataService, FleetMasterDataService>();
+    builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
+    builder.Services.AddScoped<ITripPlanningService, TripPlanningService>();
+    builder.Services.AddScoped<ITripReadinessService, TripReadinessService>();
+}
+
+// RabbitMQ messaging, Outbox Dispatcher & Event Consumers
+builder.Services.AddPlanningMessaging(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+var api = app.MapGroup("/api/v1");
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+api.MapPlanningMasterData();
+api.MapPlanningCommands();
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+// Auto initialize and verify database schema
+await DatabaseInitializer.InitializeDatabaseAsync(app.Services, app.Logger);
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+// Marker for integration testing
+public partial class Program { }

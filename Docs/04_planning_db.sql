@@ -51,6 +51,7 @@ CREATE TABLE TransportTrips (
     CurrentEta          DATETIME2(3)     NULL,
     DelayMinutes        INT              NOT NULL DEFAULT 0,
     OnTime              BIT              NULL,
+    ComplianceReady     BIT              NOT NULL DEFAULT 0,
     CreatedAt           DATETIME2(3)     NOT NULL DEFAULT SYSUTCDATETIME(),
     UpdatedAt           DATETIME2(3)     NOT NULL DEFAULT SYSUTCDATETIME(),
     VersionNo           INT              NOT NULL DEFAULT 1,
