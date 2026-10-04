@@ -12,6 +12,7 @@ GO
 CREATE TABLE Customers (
     Id              UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),
     CustomerCode    VARCHAR(50)      NOT NULL,
+    IdentityUserId  UNIQUEIDENTIFIER NULL,          -- logical ref -> IdentityDb.Users
     Name            NVARCHAR(255)    NOT NULL,
     CustomerType    VARCHAR(30)      NOT NULL,      -- CLUB, INDIVIDUAL_OWNER, BREEDER, AGENT
     ContactPerson   NVARCHAR(200)    NULL,
@@ -27,6 +28,7 @@ CREATE TABLE Customers (
     CONSTRAINT UQ_Customers_Code UNIQUE (CustomerCode)
 );
 CREATE INDEX IX_Customers_Status ON Customers (Status);
+CREATE UNIQUE INDEX UX_Customers_IdentityUserId ON Customers (IdentityUserId) WHERE IdentityUserId IS NOT NULL;
 
 CREATE TABLE Horses (
     Id                  UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),

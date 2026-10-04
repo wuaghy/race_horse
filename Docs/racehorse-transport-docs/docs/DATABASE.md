@@ -109,6 +109,8 @@ TrackingDb.HorseHealthLogs.HorseId = H123
 
 `H123` is a logical reference only. There is no cross-database foreign key.
 
+`BookingDb.Customers.IdentityUserId` is the logical reference to `IdentityDb.Users.Id` used for customer ownership checks. It is unique when present and intentionally has no cross-database foreign key.
+
 ## 4. Core relationships
 
 ### Booking

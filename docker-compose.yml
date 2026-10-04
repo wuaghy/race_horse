@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   sqlserver:
@@ -22,16 +21,87 @@ services:
       - racehorse_net
 
   db-init:
-    image: mcr.microsoft.com/mssql-tools18:latest
+    image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: racehorse_db_init
     depends_on:
       sqlserver:
         condition: service_healthy
     environment:
       - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!}
+      - SEED_DEMO_DATA=${SEED_DEMO_DATA:-false}
     volumes:
       - ./scripts/init-sql:/scripts
-    entrypoint: ["/bin/bash", "/scripts/init-db.sh"]
+    entrypoint: ["/bin/bash", "-c"]
+    command: ["tr -d '\\015' < /scripts/init-db.sh | /bin/bash"]
+    networks:
+      - racehorse_net
+
+  identity-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Identity/Identity.Api/Dockerfile
+    container_name: racehorse_identity_api
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
+      DemoData__Enabled: ${SEED_DEMO_DATA:-false}
+      DemoData__Password: ${DEMO_DATA_PASSWORD:-HorseDev2026!}
+      ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=IdentityDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      Jwt__AccessTokenMinutes: ${JWT_ACCESS_TOKEN_MINUTES:-15}
+      Jwt__RefreshTokenDays: ${JWT_REFRESH_TOKEN_DAYS:-30}
+    ports:
+      - "${IDENTITY_PORT:-8081}:8080"
+    networks:
+      - racehorse_net
+
+  booking-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Booking/Booking.Api/Dockerfile
+    container_name: racehorse_booking_api
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__BookingDb: "Server=sqlserver,1433;Database=BookingDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+    ports:
+      - "${BOOKING_PORT:-8082}:8080"
+    networks:
+      - racehorse_net
+
+  gateway-api:
+    build:
+      context: ./backend
+      dockerfile: Gateway/Gateway.Api/Dockerfile
+    container_name: racehorse_gateway_api
+    depends_on:
+      - identity-api
+      - booking-api
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      ReverseProxy__Clusters__identity__Destinations__identity-api__Address: http://identity-api:8080/
+      ReverseProxy__Clusters__booking__Destinations__booking-api__Address: http://booking-api:8080/
     networks:
       - racehorse_net
 
@@ -57,10 +127,9 @@ services:
       - racehorse_net
 
   minio:
-    image: minio/minio:latest
+    image: bitnamilegacy/minio:latest
     container_name: racehorse_minio
     restart: unless-stopped
-    command: server /data --console-address ":9001"
     ports:
       - "${MINIO_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
@@ -68,9 +137,9 @@ services:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
-      - minio_data:/data
+      - minio_data:/bitnami/minio/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "--fail", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -79,21 +148,20 @@ services:
       - racehorse_net
 
   minio-init:
-    image: minio/mc:latest
+    image: bitnamilegacy/minio-client:latest
     container_name: racehorse_minio_init
     depends_on:
       minio:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
-      /usr/bin/mc mb --ignore-existing myminio/documents;
-      /usr/bin/mc mb --ignore-existing myminio/health-images;
-      /usr/bin/mc mb --ignore-existing myminio/incident-attachments;
-      /usr/bin/mc mb --ignore-existing myminio/signatures;
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      set -e;
+      mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+      mc mb --ignore-existing myminio/documents;
+      mc mb --ignore-existing myminio/health-images;
+      mc mb --ignore-existing myminio/incident-attachments;
+      mc mb --ignore-existing myminio/signatures;
       echo 'MinIO buckets created successfully';
-      exit 0;
-      "
     networks:
       - racehorse_net
 

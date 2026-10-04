@@ -11,6 +11,20 @@
 
 ## 2. Start infrastructure
 
+Set a local JWT signing key in the environment before starting the application containers. Do not commit the key:
+
+PowerShell:
+
+```powershell
+$env:JWT_SIGNING_KEY = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+```
+
+Bash:
+
+```bash
+export JWT_SIGNING_KEY="$(openssl rand -base64 48)"
+```
+
 ```bash
 docker compose up -d
 ```
@@ -21,6 +35,9 @@ Expected infrastructure:
 SQL Server
 RabbitMQ
 Object Storage
+Gateway
+Identity
+Booking
 ```
 
 ## 3. Start backend
@@ -74,6 +91,8 @@ Do not commit real passwords or tokens.
 Every service should expose a health endpoint in development.
 
 Gateway should provide an aggregate or diagnostic endpoint for local testing.
+
+The Gateway is published at `http://localhost:8080`. Identity and Booking are internal Compose services; mobile clients should call only the Gateway.
 
 ## 8. Reset environment
 
