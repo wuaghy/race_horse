@@ -85,6 +85,31 @@ services:
     networks:
       - racehorse_net
 
+  compliance-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Compliance/Compliance.Api/Dockerfile
+    container_name: racehorse_compliance_api
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__ComplianceDb: "Server=sqlserver,1433;Database=ComplianceDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+    ports:
+      - "${COMPLIANCE_PORT:-8083}:8080"
+    networks:
+      - racehorse_net
+
   gateway-api:
     build:
       context: ./backend
@@ -93,6 +118,7 @@ services:
     depends_on:
       - identity-api
       - booking-api
+      - compliance-api
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     environment:
@@ -102,6 +128,7 @@ services:
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       ReverseProxy__Clusters__identity__Destinations__identity-api__Address: http://identity-api:8080/
       ReverseProxy__Clusters__booking__Destinations__booking-api__Address: http://booking-api:8080/
+      ReverseProxy__Clusters__compliance__Destinations__compliance-api__Address: http://compliance-api:8080/
     networks:
       - racehorse_net
 
