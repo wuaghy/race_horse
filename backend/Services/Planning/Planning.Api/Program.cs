@@ -1,3 +1,4 @@
+using BuildingBlocks.Api;
 using BuildingBlocks.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Planning.Api;
@@ -6,7 +7,6 @@ using Planning.Application.Services;
 using Planning.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
-
 builder.Services.AddOpenApi();
 
 var planningConnection = builder.Configuration.GetConnectionString("PlanningDb");
@@ -30,9 +30,9 @@ else
 builder.Services.AddPlanningMessaging(builder.Configuration);
 
 var app = builder.Build();
-
-app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseHttpsRedirection();
 
 if (app.Environment.IsDevelopment())
 {
@@ -40,9 +40,10 @@ if (app.Environment.IsDevelopment())
 }
 
 var api = app.MapGroup("/api/v1");
-
 api.MapPlanningMasterData();
 api.MapPlanningCommands();
+
+app.MapServiceHealth("planning");
 
 // Auto initialize and verify database schema
 await DatabaseInitializer.InitializeDatabaseAsync(app.Services, app.Logger);
