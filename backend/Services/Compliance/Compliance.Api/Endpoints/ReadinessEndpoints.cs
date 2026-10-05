@@ -10,7 +10,8 @@ public static class ReadinessEndpoints
     public static IEndpointRouteBuilder MapReadinessEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/compliance/readiness")
-            .WithTags("Compliance Readiness Engine");
+            .WithTags("Compliance Readiness Engine")
+            .RequireAuthorization("TransportSpecialist");
 
         group.MapPost("/evaluate", async (
             [FromBody] EvaluateComplianceReadinessRequest request,

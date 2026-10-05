@@ -10,7 +10,8 @@ public static class ComplianceMasterDataEndpoints
     public static IEndpointRouteBuilder MapComplianceMasterDataEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/compliance")
-            .WithTags("Compliance Master Data");
+            .WithTags("Compliance Master Data")
+            .RequireAuthorization("ComplianceOfficer");
 
         // Document Types
         group.MapGet("/document-types", async (

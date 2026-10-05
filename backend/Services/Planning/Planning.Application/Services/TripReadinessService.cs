@@ -96,6 +96,11 @@ public class TripReadinessService(IPlanningDbContext db) : ITripReadinessService
             .Where(h => h.TripId == tripId)
             .ToListAsync(ct);
 
+        if (horseAssignments.Count == 0)
+        {
+            blockers.Add("Chưa assign horse cho trip");
+        }
+
         foreach (var h in horseAssignments.Where(h => h.StallId is null))
         {
             blockers.Add($"Horse {h.HorseId} chưa có stall");

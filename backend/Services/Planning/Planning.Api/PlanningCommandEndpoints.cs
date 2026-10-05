@@ -1,4 +1,5 @@
 using BuildingBlocks.Api;
+using System.Security.Claims;
 using Planning.Application.DTOs.Planning;
 using Planning.Application.DTOs.Readiness;
 using Planning.Application.Services;
@@ -24,18 +25,22 @@ public static class PlanningCommandEndpoints
         // ==========================================
         // Route Plans & Versions (T10)
         // ==========================================
-        api.MapPost("/trips/{id:guid}/route-plans", async (Guid id, ActorInput input, ITripPlanningService svc, CancellationToken ct) =>
+        api.MapPost("/trips/{id:guid}/route-plans", async (Guid id, ClaimsPrincipal user, ITripPlanningService svc, CancellationToken ct) =>
         {
-            var plan = await svc.CreateRoutePlanAsync(id, input.ActorUserId, ct);
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            var plan = await svc.CreateRoutePlanAsync(id, actorId.Value, ct);
             return Results.Created($"/api/v1/route-plans/{plan.Id}", ApiResponse<RoutePlanDto>.Success(plan, "Route plan created successfully"));
         });
 
         api.MapGet("/route-plans/{id:guid}/versions", async (Guid id, ITripPlanningService svc, CancellationToken ct) =>
             Results.Ok(ApiResponse<IReadOnlyList<RoutePlanVersionDto>>.Success(await svc.GetVersionsAsync(id, ct))));
 
-        api.MapPost("/route-plans/{id:guid}/versions", async (Guid id, CreateRoutePlanVersionInput input, ITripPlanningService svc, CancellationToken ct) =>
+        api.MapPost("/route-plans/{id:guid}/versions", async (Guid id, CreateRoutePlanVersionInput input, ClaimsPrincipal user, ITripPlanningService svc, CancellationToken ct) =>
         {
-            var version = await svc.CreateNewVersionAsync(id, input.ActorUserId, input.Reason, ct);
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            var version = await svc.CreateNewVersionAsync(id, actorId.Value, input.Reason, ct);
             return Results.Created($"/api/v1/route-plan-versions/{version.Id}", ApiResponse<RoutePlanVersionDto>.Success(version, "New route version created"));
         });
 
@@ -84,8 +89,13 @@ public static class PlanningCommandEndpoints
         // ==========================================
         // Assignments (T10)
         // ==========================================
-        api.MapPost("/route-legs/{id:guid}/assignments/resource", async (Guid id, ResourceInput input, ITripPlanningService svc, CancellationToken ct) =>
-            Results.Created("", ApiResponse<ResourceAssignmentDto>.Success(await svc.AssignResourceAsync(id, input, ct), "Resource assigned successfully")));
+        api.MapPost("/route-legs/{id:guid}/assignments/resource", async (Guid id, ResourceInput input, ClaimsPrincipal user, ITripPlanningService svc, CancellationToken ct) =>
+        {
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            var assignment = await svc.AssignResourceAsync(id, input with { AssignedByUserId = actorId.Value }, ct);
+            return Results.Created("", ApiResponse<ResourceAssignmentDto>.Success(assignment, "Resource assigned successfully"));
+        });
 
         api.MapPost("/trips/{id:guid}/staff-assignments", async (Guid id, StaffInput input, ITripPlanningService svc, CancellationToken ct) =>
             Results.Created("", ApiResponse<StaffAssignmentDto>.Success(await svc.AssignStaffAsync(id, input, ct), "Staff assigned successfully")));
@@ -99,30 +109,49 @@ public static class PlanningCommandEndpoints
         // ==========================================
         // Route Version Lifecycle Transitions (T10)
         // ==========================================
-        api.MapPost("/route-plan-versions/{id:guid}/submit", async (Guid id, ActorInput input, ITripPlanningService svc, CancellationToken ct) =>
-            Results.Ok(ApiResponse<RoutePlanVersionDto>.Success(await svc.SubmitRouteVersionAsync(id, input.ActorUserId, ct), "Route version submitted for approval")));
+        api.MapPost("/route-plan-versions/{id:guid}/submit", async (Guid id, ClaimsPrincipal user, ITripPlanningService svc, CancellationToken ct) =>
+        {
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            return Results.Ok(ApiResponse<RoutePlanVersionDto>.Success(await svc.SubmitRouteVersionAsync(id, actorId.Value, ct), "Route version submitted for approval"));
+        });
 
-        api.MapPost("/route-plan-versions/{id:guid}/approve", async (Guid id, ActorInput input, ITripPlanningService svc, CancellationToken ct) =>
-            Results.Ok(ApiResponse<RoutePlanVersionDto>.Success(await svc.ApproveRouteVersionAsync(id, input.ActorUserId, ct), "Route version approved")));
+        api.MapPost("/route-plan-versions/{id:guid}/approve", async (Guid id, ClaimsPrincipal user, ITripPlanningService svc, CancellationToken ct) =>
+        {
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            return Results.Ok(ApiResponse<RoutePlanVersionDto>.Success(await svc.ApproveRouteVersionAsync(id, actorId.Value, ct), "Route version approved"));
+        });
 
-        api.MapPost("/route-plan-versions/{id:guid}/activate", async (Guid id, ActorInput input, ITripPlanningService svc, CancellationToken ct) =>
-            Results.Ok(ApiResponse<RoutePlanVersionDto>.Success(await svc.ActivateRouteVersionAsync(id, input.ActorUserId, ct), "Route version activated")));
+        api.MapPost("/route-plan-versions/{id:guid}/activate", async (Guid id, ClaimsPrincipal user, ITripPlanningService svc, CancellationToken ct) =>
+        {
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            return Results.Ok(ApiResponse<RoutePlanVersionDto>.Success(await svc.ActivateRouteVersionAsync(id, actorId.Value, ct), "Route version activated"));
+        });
 
         // ==========================================
         // Readiness & Pre-departure (T11)
         // ==========================================
-        api.MapPost("/trips/{id:guid}/compliance-ready", async (Guid id, ITripReadinessService svc, CancellationToken ct) =>
-            Results.Ok(ApiResponse<TripDto>.Success(await svc.SetComplianceReadyAsync(id, ct), "Trip marked compliance ready")));
-
         api.MapGet("/trips/{id:guid}/readiness", async (Guid id, ITripReadinessService svc, CancellationToken ct) =>
             Results.Ok(ApiResponse<TripReadinessResponse>.Success(await svc.EvaluateReadinessAsync(id, ct))));
 
         api.MapGet("/trips/{id:guid}/blockers", async (Guid id, ITripReadinessService svc, CancellationToken ct) =>
             Results.Ok(ApiResponse<IReadOnlyList<string>>.Success((await svc.EvaluateReadinessAsync(id, ct)).Blockers)));
 
-        api.MapPost("/trips/{id:guid}/confirm-ready", async (Guid id, ConfirmReadyRequest input, ITripReadinessService svc, CancellationToken ct) =>
-            Results.Ok(ApiResponse<TripDto>.Success(await svc.ConfirmReadyAsync(id, input.ActorUserId, ct), "Trip confirmed READY for departure")));
+        api.MapPost("/trips/{id:guid}/confirm-ready", async (Guid id, ClaimsPrincipal user, ITripReadinessService svc, CancellationToken ct) =>
+        {
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            return Results.Ok(ApiResponse<TripDto>.Success(await svc.ConfirmReadyAsync(id, actorId.Value, ct), "Trip confirmed READY for departure"));
+        });
 
         return api;
+    }
+
+    private static Guid? GetActorId(ClaimsPrincipal user)
+    {
+        var value = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(value, out var actorId) ? actorId : null;
     }
 }

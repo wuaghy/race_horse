@@ -105,8 +105,35 @@ services:
       RabbitMQ__HostName: rabbitmq
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      Storage__LocalDirectory: /app/App_Data/compliance-files
     ports:
       - "${COMPLIANCE_PORT:-8083}:8080"
+    volumes:
+      - compliance_files:/app/App_Data/compliance-files
+    networks:
+      - racehorse_net
+
+  planning-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Planning/Planning.Api/Dockerfile
+    container_name: racehorse_planning_api
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__PlanningDb: "Server=sqlserver,1433;Database=PlanningDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__ExchangeName: racehorse.events
     networks:
       - racehorse_net
 
@@ -119,6 +146,7 @@ services:
       - identity-api
       - booking-api
       - compliance-api
+      - planning-api
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     environment:
@@ -129,6 +157,7 @@ services:
       ReverseProxy__Clusters__identity__Destinations__identity-api__Address: http://identity-api:8080/
       ReverseProxy__Clusters__booking__Destinations__booking-api__Address: http://booking-api:8080/
       ReverseProxy__Clusters__compliance__Destinations__compliance-api__Address: http://compliance-api:8080/
+      ReverseProxy__Clusters__planning__Destinations__planning-api__Address: http://planning-api:8080/
     networks:
       - racehorse_net
 
@@ -196,6 +225,7 @@ volumes:
   sqlserver_data:
   rabbitmq_data:
   minio_data:
+  compliance_files:
 
 networks:
   racehorse_net:

@@ -24,6 +24,7 @@ public class TripReadinessServiceTests
         Assert.False(result.Ready);
         Assert.Contains("Route version chưa ACTIVE", result.Blockers);
         Assert.Contains("Chưa assign escort", result.Blockers);
+        Assert.Contains("Chưa assign horse cho trip", result.Blockers);
         Assert.Contains("Compliance chưa ready", result.Blockers);
     }
 

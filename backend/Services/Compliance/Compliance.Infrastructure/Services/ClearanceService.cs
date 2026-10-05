@@ -159,6 +159,23 @@ public class ClearanceService : IClearanceService
         var clearanceCase = await _db.ClearanceCases.FirstOrDefaultAsync(c => c.Id == caseId, cancellationToken);
         if (clearanceCase is null) return null;
 
+        var allowedTransitions = clearanceCase.Status switch
+        {
+            ClearanceStatus.Submitted => new[] { ClearanceStatus.UnderReview },
+            ClearanceStatus.UnderReview => new[]
+            {
+                ClearanceStatus.NeedAdditionalInfo,
+                ClearanceStatus.Approved,
+                ClearanceStatus.Rejected
+            },
+            ClearanceStatus.Approved => new[] { ClearanceStatus.Completed },
+            _ => Array.Empty<string>()
+        };
+        if (!allowedTransitions.Contains(targetStatus, StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException($"Cannot transition clearance case from '{clearanceCase.Status}' to '{targetStatus}'.");
+        }
+
         var oldState = clearanceCase.Status;
         clearanceCase.Status = targetStatus;
         clearanceCase.ReviewedAt = DateTime.UtcNow;

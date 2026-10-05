@@ -5,7 +5,3 @@ public record TripReadinessResponse(
     bool Ready,
     IReadOnlyList<string> Blockers
 );
-
-public record ConfirmReadyRequest(
-    Guid ActorUserId
-);

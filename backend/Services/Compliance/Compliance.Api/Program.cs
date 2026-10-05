@@ -59,8 +59,7 @@ if (!string.IsNullOrWhiteSpace(jwtSigningKey) && Encoding.UTF8.GetByteCount(jwtS
 }
 else
 {
-    // Local fallback when running without configured secret
-    builder.Services.AddAuthentication();
+    throw new InvalidOperationException("Jwt:SigningKey must be provided through a secret configuration source and contain at least 32 bytes.");
 }
 
 builder.Services.AddAuthorization(options =>
