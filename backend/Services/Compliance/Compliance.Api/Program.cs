@@ -66,6 +66,7 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("TransportSpecialist", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "LOGISTICS_MANAGER", "ADMIN"));
     options.AddPolicy("ComplianceOfficer", policy => policy.RequireRole("COMPLIANCE_OFFICER", "ADMIN"));
+    options.AddPolicy("ComplianceAccess", policy => policy.RequireRole("CUSTOMER", "TRANSPORT_SPECIALIST", "LOGISTICS_MANAGER", "COMPLIANCE_OFFICER", "ADMIN"));
 });
 
 // Compliance Infrastructure & Persistence
