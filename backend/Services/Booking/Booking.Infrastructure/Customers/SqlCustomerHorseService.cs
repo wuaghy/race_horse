@@ -90,9 +90,11 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         Guid identityUserId,
         int page,
         int pageSize,
+        string? search,
         CancellationToken cancellationToken)
     {
         ValidatePage(page, pageSize);
+        search = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         var customerId = await GetCustomerIdAsync(connection, identityUserId, cancellationToken);
@@ -101,15 +103,18 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
             return new PageResult<HorseRecord>([], page, pageSize, 0);
         }
 
-        await using var count = new SqlCommand("SELECT COUNT_BIG(*) FROM dbo.Horses WHERE OwnerCustomerId = @CustomerId;", connection);
+        const string filter = "OwnerCustomerId = @CustomerId AND (@Search IS NULL OR HorseName LIKE '%' + @Search + '%' OR HorseCode LIKE '%' + @Search + '%' OR RegistrationNumber LIKE '%' + @Search + '%' OR PassportNumber LIKE '%' + @Search + '%')";
+        await using var count = new SqlCommand($"SELECT COUNT_BIG(*) FROM dbo.Horses WHERE {filter};", connection);
         count.Parameters.Add("@CustomerId", SqlDbType.UniqueIdentifier).Value = customerId.Value;
+        count.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
         var total = (long)(await count.ExecuteScalarAsync(cancellationToken) ?? 0L);
 
         await using var command = new SqlCommand(
             "SELECT Id, HorseCode, HorseName, RegistrationNumber, PassportNumber, Breed, Sex, DateOfBirth, Color, CountryOfOriginId, SpecialRequirements, Status, VersionNo " +
-            "FROM dbo.Horses WHERE OwnerCustomerId = @CustomerId ORDER BY HorseName, Id OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;",
+            $"FROM dbo.Horses WHERE {filter} ORDER BY HorseName, Id OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;",
             connection);
         command.Parameters.Add("@CustomerId", SqlDbType.UniqueIdentifier).Value = customerId.Value;
+        command.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
         command.Parameters.Add("@Offset", SqlDbType.Int).Value = page * pageSize;
         command.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
 

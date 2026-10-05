@@ -9,12 +9,13 @@ public static class ComplianceMasterDataEndpoints
 {
     public static IEndpointRouteBuilder MapComplianceMasterDataEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/compliance")
-            .WithTags("Compliance Master Data")
-            .RequireAuthorization("ComplianceOfficer");
+        var root = app.MapGroup("/api/v1/compliance")
+            .WithTags("Compliance Master Data");
+        var group = root.MapGroup("").RequireAuthorization("ComplianceOfficer");
+        var reader = root.MapGroup("").RequireAuthorization("ComplianceAccess");
 
         // Document Types
-        group.MapGet("/document-types", async (
+        reader.MapGet("/document-types", async (
             [FromQuery] string? scope,
             [FromQuery] bool? active,
             IComplianceMasterDataService service,

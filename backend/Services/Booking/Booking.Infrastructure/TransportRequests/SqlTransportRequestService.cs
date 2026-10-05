@@ -19,13 +19,15 @@ public sealed class SqlTransportRequestService : ITransportRequestService
             ?? throw new InvalidOperationException("ConnectionStrings:BookingDb must be configured.");
     }
 
-    public async Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, string? search, CancellationToken cancellationToken)
     {
         ValidatePage(page, pageSize);
+        search = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
         await using var connection = await OpenConnectionAsync(cancellationToken);
-        const string ownerFilter = "FROM dbo.TransportRequests r INNER JOIN dbo.Customers c ON c.Id = r.CustomerId WHERE c.IdentityUserId = @IdentityUserId";
+        const string ownerFilter = "FROM dbo.TransportRequests r INNER JOIN dbo.Customers c ON c.Id = r.CustomerId WHERE c.IdentityUserId = @IdentityUserId AND (@Search IS NULL OR r.RequestNo LIKE '%' + @Search + '%' OR r.Status LIKE '%' + @Search + '%')";
         await using var countCommand = new SqlCommand("SELECT COUNT_BIG(*) " + ownerFilter + ";", connection);
         countCommand.Parameters.Add("@IdentityUserId", SqlDbType.UniqueIdentifier).Value = identityUserId;
+        countCommand.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
         var total = (long)(await countCommand.ExecuteScalarAsync(cancellationToken) ?? 0L);
 
         await using var command = new SqlCommand(
@@ -34,6 +36,7 @@ public sealed class SqlTransportRequestService : ITransportRequestService
             ownerFilter + " ORDER BY r.CreatedAt DESC, r.Id OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;",
             connection);
         command.Parameters.Add("@IdentityUserId", SqlDbType.UniqueIdentifier).Value = identityUserId;
+        command.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
         AddPaging(command, page, pageSize);
         return new PageResult<TransportRequestListItem>(await ReadListAsync(command, cancellationToken), page, pageSize, total);
     }

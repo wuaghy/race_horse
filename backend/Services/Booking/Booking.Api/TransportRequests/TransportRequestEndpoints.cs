@@ -13,9 +13,9 @@ public static class TransportRequestEndpoints
     {
         var customer = app.MapGroup("/api/v1/transport-requests")
             .RequireAuthorization("Customer");
-        customer.MapGet("/", async (int? page, int? pageSize, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
+        customer.MapGet("/", async (int? page, int? pageSize, string? search, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
         {
-            var result = await service.GetCustomerRequestsAsync(GetUserId(principal), page ?? 0, pageSize ?? 20, cancellationToken);
+            var result = await service.GetCustomerRequestsAsync(GetUserId(principal), page ?? 0, pageSize ?? 20, search, cancellationToken);
             return Results.Ok(ApiResponse<IReadOnlyList<TransportRequestListItem>>.Success(result.Items, ToPagination(result), requestId: GetRequestId(context)));
         }).WithName("ListCustomerTransportRequests");
         customer.MapPost("/", async (SaveTransportRequestRequest request, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>

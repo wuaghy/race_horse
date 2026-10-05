@@ -67,6 +67,7 @@ public interface ICustomerHorseService
         Guid identityUserId,
         int page,
         int pageSize,
+        string? search,
         CancellationToken cancellationToken);
 
     Task<HorseRecord?> GetHorseAsync(Guid identityUserId, Guid horseId, CancellationToken cancellationToken);

@@ -31,9 +31,9 @@ public static class CustomerHorseEndpoints
 
         var horses = app.MapGroup("/api/v1/horses")
             .RequireAuthorization("Customer");
-        horses.MapGet("/", async (int? page, int? pageSize, ClaimsPrincipal principal, ICustomerHorseService service, HttpContext context, CancellationToken cancellationToken) =>
+        horses.MapGet("/", async (int? page, int? pageSize, string? search, ClaimsPrincipal principal, ICustomerHorseService service, HttpContext context, CancellationToken cancellationToken) =>
         {
-            var result = await service.GetHorsesAsync(GetUserId(principal), page ?? 0, pageSize ?? 20, cancellationToken);
+            var result = await service.GetHorsesAsync(GetUserId(principal), page ?? 0, pageSize ?? 20, search, cancellationToken);
             var pagination = new PaginationMeta
             {
                 Page = result.Page,

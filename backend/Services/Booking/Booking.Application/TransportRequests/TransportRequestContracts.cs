@@ -46,7 +46,7 @@ public sealed record ManagerDecisionInput(string? Reason);
 
 public interface ITransportRequestService
 {
-    Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, CancellationToken cancellationToken);
+    Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, string? search, CancellationToken cancellationToken);
 
     Task<TransportRequestRecord?> GetCustomerRequestAsync(Guid identityUserId, Guid requestId, CancellationToken cancellationToken);
 
