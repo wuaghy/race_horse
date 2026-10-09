@@ -137,6 +137,35 @@ services:
     networks:
       - racehorse_net
 
+  handover-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Handover/Handover.Api/Dockerfile
+    container_name: racehorse_handover_api
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__HandoverDb: "Server=sqlserver,1433;Database=HandoverDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__ExchangeName: racehorse.events
+      Storage__HandoverDirectory: /app/App_Data/handover-files
+    ports:
+      - "${HANDOVER_PORT:-8085}:8080"
+    volumes:
+      - handover_files:/app/App_Data/handover-files
+    networks:
+      - racehorse_net
+
   gateway-api:
     build:
       context: ./backend
@@ -147,6 +176,7 @@ services:
       - booking-api
       - compliance-api
       - planning-api
+      - handover-api
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     environment:
@@ -158,6 +188,7 @@ services:
       ReverseProxy__Clusters__booking__Destinations__booking-api__Address: http://booking-api:8080/
       ReverseProxy__Clusters__compliance__Destinations__compliance-api__Address: http://compliance-api:8080/
       ReverseProxy__Clusters__planning__Destinations__planning-api__Address: http://planning-api:8080/
+      ReverseProxy__Clusters__handover__Destinations__handover-api__Address: http://handover-api:8080/
     networks:
       - racehorse_net
 
@@ -226,6 +257,7 @@ volumes:
   rabbitmq_data:
   minio_data:
   compliance_files:
+  handover_files:
 
 networks:
   racehorse_net:
