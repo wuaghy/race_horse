@@ -61,3 +61,13 @@ web-build/
 # SQL Server data volumes
 data/sqlserver/
 data/minio/
+
+# Local testing files (development only)
+test-tracking-api.sh
+test-tracking-api.ps1
+TESTING_GUIDE.md
+QUICK_START.md
+SWAGGER_TESTING.md
+DOCKER_DEPLOYMENT.md
+start-docker.sh
+start-docker.bat

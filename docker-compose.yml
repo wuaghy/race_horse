@@ -137,6 +137,29 @@ services:
     networks:
       - racehorse_net
 
+  tracking-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Tracking/Tracking.Api/Dockerfile
+    container_name: racehorse_tracking_api
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__ExchangeName: racehorse.events
+    ports:
+      - "${TRACKING_PORT:-8084}:8080"
+    networks:
+      - racehorse_net
+
   gateway-api:
     build:
       context: ./backend
@@ -147,6 +170,7 @@ services:
       - booking-api
       - compliance-api
       - planning-api
+      - tracking-api
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     environment:
@@ -158,6 +182,7 @@ services:
       ReverseProxy__Clusters__booking__Destinations__booking-api__Address: http://booking-api:8080/
       ReverseProxy__Clusters__compliance__Destinations__compliance-api__Address: http://compliance-api:8080/
       ReverseProxy__Clusters__planning__Destinations__planning-api__Address: http://planning-api:8080/
+      ReverseProxy__Clusters__tracking__Destinations__tracking-api__Address: http://tracking-api:8080/
     networks:
       - racehorse_net
 

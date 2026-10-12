@@ -15,9 +15,12 @@ public static class CustomerHorseEndpoints
         customer.MapGet("/me", async (ClaimsPrincipal principal, ICustomerHorseService service, HttpContext context, CancellationToken cancellationToken) =>
         {
             var profile = await service.GetProfileAsync(GetUserId(principal), cancellationToken);
-            return profile is null
-                ? Results.NotFound(ApiResponse<object>.Failure(40400, "Customer profile was not found.", requestId: GetRequestId(context)))
-                : Results.Ok(ApiResponse<CustomerProfile>.Success(profile, requestId: GetRequestId(context)));
+            if (profile is null)
+            {
+                var error = new ApiError { Reason = "CUSTOMER_PROFILE_NOT_FOUND", Message = "Customer profile was not found." };
+                return Results.NotFound(ApiResponse<object>.Failure(40400, "Customer profile was not found.", new List<ApiError> { error }, GetRequestId(context)));
+            }
+            return Results.Ok(ApiResponse<CustomerProfile>.Success(profile, requestId: GetRequestId(context)));
         });
         customer.MapPut("/me", async (SaveCustomerProfileRequest request, ClaimsPrincipal principal, ICustomerHorseService service, HttpContext context, CancellationToken cancellationToken) =>
         {
@@ -46,9 +49,12 @@ public static class CustomerHorseEndpoints
         horses.MapGet("/{horseId:guid}", async (Guid horseId, ClaimsPrincipal principal, ICustomerHorseService service, HttpContext context, CancellationToken cancellationToken) =>
         {
             var horse = await service.GetHorseAsync(GetUserId(principal), horseId, cancellationToken);
-            return horse is null
-                ? Results.NotFound(ApiResponse<object>.Failure(40400, "Horse was not found.", requestId: GetRequestId(context)))
-                : Results.Ok(ApiResponse<HorseRecord>.Success(horse, requestId: GetRequestId(context)));
+            if (horse is null)
+            {
+                var error = new ApiError { Field = "horseId", Reason = "HORSE_NOT_FOUND", Message = "Horse was not found." };
+                return Results.NotFound(ApiResponse<object>.Failure(40400, "Horse was not found.", new List<ApiError> { error }, GetRequestId(context)));
+            }
+            return Results.Ok(ApiResponse<HorseRecord>.Success(horse, requestId: GetRequestId(context)));
         }).WithName("GetOwnedHorse");
         horses.MapPost("/", async (SaveHorseRequest request, ClaimsPrincipal principal, ICustomerHorseService service, HttpContext context, CancellationToken cancellationToken) =>
         {
