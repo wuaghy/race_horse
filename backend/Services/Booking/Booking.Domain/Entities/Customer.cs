@@ -21,7 +21,7 @@ public sealed class Customer
 
     public void UpdateProfile(string name, string customerType, string? contactPerson, string? phone, string? address, Guid? countryId)
     {
-        if (!("CLUB" is ("CLUB" or "INDIVIDUAL_OWNER" or "BREEDER" or "AGENT")))
+        if (!(customerType is "CLUB" or "INDIVIDUAL_OWNER" or "BREEDER" or "AGENT"))
         {
             throw new InvalidOperationException("Customer type is not supported.");
         }
