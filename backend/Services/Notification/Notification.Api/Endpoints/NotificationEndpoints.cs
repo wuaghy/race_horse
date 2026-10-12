@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BuildingBlocks.Api;
 using Microsoft.AspNetCore.Mvc;
 using Notification.Application.DTOs;
 using Notification.Application.Services;
@@ -10,7 +11,8 @@ public static class NotificationEndpoints
     public static IEndpointRouteBuilder MapNotificationEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/notifications")
-            .WithTags("Notifications");
+            .WithTags("Notifications")
+            .RequireAuthorization();
 
         group.MapGet("/", async (
             [FromQuery] bool? unreadOnly,
@@ -22,7 +24,14 @@ public static class NotificationEndpoints
         {
             var userId = GetUserId(user);
             var result = await service.GetUserNotificationsAsync(userId, unreadOnly, page == 0 ? 1 : page, pageSize == 0 ? 20 : pageSize, ct);
-            return Results.Ok(result);
+            var pagination = new PaginationMeta
+            {
+                Page = result.PageNumber,
+                PageSize = result.PageSize,
+                TotalItems = result.TotalCount,
+                TotalPages = result.TotalPages
+            };
+            return Results.Ok(ApiResponse<IReadOnlyList<NotificationDto>>.Success(result.Items, pagination));
         })
         .WithName("GetUserNotifications")
         .WithSummary("List user notifications with optional unread filter");
@@ -34,7 +43,7 @@ public static class NotificationEndpoints
         {
             var userId = GetUserId(user);
             var result = await service.GetUnreadCountAsync(userId, ct);
-            return Results.Ok(result);
+            return Results.Ok(ApiResponse<UnreadCountDto>.Success(result));
         })
         .WithName("GetUnreadNotificationCount")
         .WithSummary("Get unread notification count badge for the current user");
@@ -47,7 +56,9 @@ public static class NotificationEndpoints
         {
             var userId = GetUserId(user);
             var success = await service.MarkAsReadAsync(id, userId, ct);
-            return success ? Results.NoContent() : Results.NotFound();
+            return success
+                ? Results.Ok(ApiResponse<object>.Success(new { id, read = true }, "Notification marked as read."))
+                : Results.NotFound(ApiResponse<object>.Failure(404, "Notification not found."));
         })
         .WithName("MarkNotificationAsRead")
         .WithSummary("Mark a single notification as read");
@@ -59,7 +70,7 @@ public static class NotificationEndpoints
         {
             var userId = GetUserId(user);
             var updatedCount = await service.MarkAllAsReadAsync(userId, ct);
-            return Results.Ok(new { updatedCount });
+            return Results.Ok(ApiResponse<object>.Success(new { updatedCount }, "All notifications marked as read."));
         })
         .WithName("MarkAllNotificationsAsRead")
         .WithSummary("Mark all unread notifications as read");
@@ -72,7 +83,7 @@ public static class NotificationEndpoints
         {
             var userId = GetUserId(user);
             await service.RegisterDeviceTokenAsync(userId, request, ct);
-            return Results.Ok(new { success = true });
+            return Results.Ok(ApiResponse<object>.Success(new { success = true }, "Device token registered."));
         })
         .WithName("RegisterDeviceToken")
         .WithSummary("Register mobile push device token");
@@ -85,7 +96,7 @@ public static class NotificationEndpoints
         {
             var userId = GetUserId(user);
             await service.UnregisterDeviceTokenAsync(userId, token, ct);
-            return Results.NoContent();
+            return Results.Ok(ApiResponse<object>.Success(new { unregistered = true }, "Device token deactivated."));
         })
         .WithName("UnregisterDeviceToken")
         .WithSummary("Deactivate mobile push device token");

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BuildingBlocks.Api;
 using Incident.Application.DTOs;
 using Incident.Application.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,8 @@ public static class IncidentEndpoints
     public static IEndpointRouteBuilder MapIncidentEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/incidents")
-            .WithTags("Incidents");
+            .WithTags("Incidents")
+            .RequireAuthorization();
 
         group.MapPost("/", async (
             [FromBody] CreateIncidentRequest request,
@@ -20,7 +22,7 @@ public static class IncidentEndpoints
         {
             var userId = GetUserId(user);
             var result = await service.CreateIncidentAsync(request, userId, ct);
-            return Results.Created($"/api/v1/incidents/{result.Id}", result);
+            return Results.Created($"/api/v1/incidents/{result.Id}", ApiResponse<IncidentDto>.Success(result, "Incident reported successfully."));
         })
         .WithName("CreateIncident")
         .WithSummary("Report a new transport incident");
@@ -31,7 +33,14 @@ public static class IncidentEndpoints
             CancellationToken ct) =>
         {
             var result = await service.GetIncidentsAsync(filter, ct);
-            return Results.Ok(result);
+            var pagination = new PaginationMeta
+            {
+                Page = result.PageNumber,
+                PageSize = result.PageSize,
+                TotalItems = result.TotalCount,
+                TotalPages = result.TotalPages
+            };
+            return Results.Ok(ApiResponse<IReadOnlyList<IncidentSummaryDto>>.Success(result.Items, pagination));
         })
         .WithName("GetIncidents")
         .WithSummary("List and filter incidents");
@@ -42,7 +51,9 @@ public static class IncidentEndpoints
             CancellationToken ct) =>
         {
             var result = await service.GetIncidentByIdAsync(id, ct);
-            return result is null ? Results.NotFound() : Results.Ok(result);
+            return result is null
+                ? Results.NotFound(ApiResponse<object>.Failure(404, "Incident not found."))
+                : Results.Ok(ApiResponse<IncidentDto>.Success(result));
         })
         .WithName("GetIncidentById")
         .WithSummary("Get incident details by ID");
@@ -53,7 +64,7 @@ public static class IncidentEndpoints
             CancellationToken ct) =>
         {
             var result = await service.GetIncidentsByTripIdAsync(tripId, ct);
-            return Results.Ok(result);
+            return Results.Ok(ApiResponse<IReadOnlyList<IncidentSummaryDto>>.Success(result));
         })
         .WithName("GetIncidentsByTripId")
         .WithSummary("Get all incidents for a specific transport trip");
@@ -67,7 +78,7 @@ public static class IncidentEndpoints
         {
             var userId = GetUserId(user);
             var result = await service.UpdateStatusAsync(id, request, userId, ct);
-            return Results.Ok(result);
+            return Results.Ok(ApiResponse<IncidentDto>.Success(result, "Incident status updated."));
         })
         .WithName("UpdateIncidentStatus")
         .WithSummary("Update incident status");
@@ -81,7 +92,7 @@ public static class IncidentEndpoints
         {
             var userId = GetUserId(user);
             var result = await service.ResolveIncidentAsync(id, request, userId, ct);
-            return Results.Ok(result);
+            return Results.Ok(ApiResponse<IncidentDto>.Success(result, "Incident resolved successfully."));
         })
         .WithName("ResolveIncident")
         .WithSummary("Resolve incident with resolution notes");
@@ -94,7 +105,7 @@ public static class IncidentEndpoints
             CancellationToken ct) =>
         {
             if (file == null || file.Length == 0)
-                return Results.BadRequest("A valid file must be provided.");
+                return Results.BadRequest(ApiResponse<object>.Failure(400, "A valid file must be provided."));
 
             var userId = GetUserId(user);
             using var stream = file.OpenReadStream();
@@ -106,7 +117,7 @@ public static class IncidentEndpoints
                 userId,
                 ct);
 
-            return Results.Ok(result);
+            return Results.Ok(ApiResponse<IncidentAttachmentDto>.Success(result, "Attachment uploaded successfully."));
         })
         .DisableAntiforgery()
         .WithName("UploadIncidentAttachment")
