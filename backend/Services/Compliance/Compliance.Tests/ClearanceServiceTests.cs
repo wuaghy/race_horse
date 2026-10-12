@@ -86,6 +86,10 @@ public class ClearanceServiceTests
         await svc.SubmitClearanceCaseAsync(created.Id, userId, CancellationToken.None);
 
         var reviewerId = Guid.NewGuid();
+        await svc.ReviewClearanceCaseAsync(
+            created.Id, reviewerId,
+            new ReviewClearanceCaseRequest(ClearanceStatus.UnderReview),
+            CancellationToken.None);
         var result = await svc.ReviewClearanceCaseAsync(
             created.Id, reviewerId,
             new ReviewClearanceCaseRequest("APPROVED", "All good"),
@@ -111,6 +115,10 @@ public class ClearanceServiceTests
 
         await svc.SubmitClearanceCaseAsync(created.Id, userId, CancellationToken.None);
 
+        await svc.ReviewClearanceCaseAsync(
+            created.Id, Guid.NewGuid(),
+            new ReviewClearanceCaseRequest(ClearanceStatus.UnderReview),
+            CancellationToken.None);
         var result = await svc.ReviewClearanceCaseAsync(
             created.Id, Guid.NewGuid(),
             new ReviewClearanceCaseRequest("REJECTED", "Incomplete documents"),
@@ -118,5 +126,18 @@ public class ClearanceServiceTests
 
         Assert.NotNull(result);
         Assert.Equal(ClearanceStatus.Rejected, result!.Status);
+    }
+
+    [Fact]
+    public async Task ReviewClearanceCase_CannotSkipSubmissionAndReview()
+    {
+        using var db = TestDbContextFactory.Create();
+        var svc = new ClearanceService(db);
+        var created = await svc.CreateClearanceCaseAsync(
+            Guid.NewGuid(), MakeRequest(Guid.NewGuid(), "Customs"), CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.ReviewClearanceCaseAsync(
+            created.Id, Guid.NewGuid(),
+            new ReviewClearanceCaseRequest(ClearanceStatus.Completed), CancellationToken.None));
     }
 }

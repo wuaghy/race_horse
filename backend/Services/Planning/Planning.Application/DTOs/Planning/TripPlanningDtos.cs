@@ -43,9 +43,7 @@ public record RoutePlanVersionDto(
     DateTime CreatedAt
 );
 
-public record CreateRoutePlanVersionInput(Guid ActorUserId, string? Reason = null);
-
-public record ActorInput(Guid ActorUserId, string? Reason = null);
+public record CreateRoutePlanVersionInput(string? Reason = null);
 
 public record RouteLegDto(
     Guid Id,

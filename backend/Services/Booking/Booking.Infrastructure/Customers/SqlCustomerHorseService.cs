@@ -35,11 +35,6 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         CustomerProfileInput input,
         CancellationToken cancellationToken)
     {
-        if (input.CustomerType is not ("CLUB" or "INDIVIDUAL_OWNER" or "BREEDER" or "AGENT"))
-        {
-            throw new BusinessRuleException("Customer type is not supported.", "CUSTOMER_TYPE_INVALID", "customerType");
-        }
-
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
@@ -90,9 +85,11 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         Guid identityUserId,
         int page,
         int pageSize,
+        string? search,
         CancellationToken cancellationToken)
     {
         ValidatePage(page, pageSize);
+        search = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         var customerId = await GetCustomerIdAsync(connection, identityUserId, cancellationToken);
@@ -101,15 +98,18 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
             return new PageResult<HorseRecord>([], page, pageSize, 0);
         }
 
-        await using var count = new SqlCommand("SELECT COUNT_BIG(*) FROM dbo.Horses WHERE OwnerCustomerId = @CustomerId;", connection);
+        const string filter = "OwnerCustomerId = @CustomerId AND (@Search IS NULL OR HorseName LIKE '%' + @Search + '%' OR HorseCode LIKE '%' + @Search + '%' OR RegistrationNumber LIKE '%' + @Search + '%' OR PassportNumber LIKE '%' + @Search + '%')";
+        await using var count = new SqlCommand($"SELECT COUNT_BIG(*) FROM dbo.Horses WHERE {filter};", connection);
         count.Parameters.Add("@CustomerId", SqlDbType.UniqueIdentifier).Value = customerId.Value;
+        count.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
         var total = (long)(await count.ExecuteScalarAsync(cancellationToken) ?? 0L);
 
         await using var command = new SqlCommand(
             "SELECT Id, HorseCode, HorseName, RegistrationNumber, PassportNumber, Breed, Sex, DateOfBirth, Color, CountryOfOriginId, SpecialRequirements, Status, VersionNo " +
-            "FROM dbo.Horses WHERE OwnerCustomerId = @CustomerId ORDER BY HorseName, Id OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;",
+            $"FROM dbo.Horses WHERE {filter} ORDER BY HorseName, Id OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;",
             connection);
         command.Parameters.Add("@CustomerId", SqlDbType.UniqueIdentifier).Value = customerId.Value;
+        command.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
         command.Parameters.Add("@Offset", SqlDbType.Int).Value = page * pageSize;
         command.Parameters.Add("@PageSize", SqlDbType.Int).Value = pageSize;
 
@@ -140,7 +140,6 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
 
     public async Task<HorseRecord> CreateHorseAsync(Guid identityUserId, HorseInput input, CancellationToken cancellationToken)
     {
-        ValidateHorse(input);
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         var customerId = await RequireCustomerIdAsync(connection, identityUserId, cancellationToken);
@@ -159,12 +158,6 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
 
     public async Task<HorseRecord> UpdateHorseAsync(Guid identityUserId, Guid horseId, HorseInput input, CancellationToken cancellationToken)
     {
-        ValidateHorse(input);
-        if (input.VersionNo is null)
-        {
-            throw new BusinessRuleException("VersionNo is required when updating a horse.", "VERSION_REQUIRED", "versionNo");
-        }
-
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = new SqlCommand(
@@ -258,24 +251,6 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         command.Parameters.Add("@Color", SqlDbType.NVarChar, 100).Value = (object?)input.Color ?? DBNull.Value;
         command.Parameters.Add("@CountryId", SqlDbType.UniqueIdentifier).Value = (object?)input.CountryOfOriginId ?? DBNull.Value;
         command.Parameters.Add("@SpecialRequirements", SqlDbType.NVarChar, 1000).Value = (object?)input.SpecialRequirements ?? DBNull.Value;
-    }
-
-    private static void ValidateHorse(HorseInput input)
-    {
-        if (string.IsNullOrWhiteSpace(input.HorseName))
-        {
-            throw new BusinessRuleException("Horse name is required.", "HORSE_NAME_REQUIRED", "horseName");
-        }
-
-        if (input.DateOfBirth > DateOnly.FromDateTime(DateTime.UtcNow))
-        {
-            throw new BusinessRuleException("Date of birth cannot be in the future.", "HORSE_DATE_OF_BIRTH_INVALID", "dateOfBirth");
-        }
-
-        if (input.Sex is not null && input.Sex is not ("STALLION" or "MARE" or "GELDING"))
-        {
-            throw new BusinessRuleException("Horse sex is not supported.", "HORSE_SEX_INVALID", "sex");
-        }
     }
 
     private static void ValidatePage(int page, int pageSize)

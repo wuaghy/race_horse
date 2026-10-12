@@ -11,7 +11,8 @@ public static class ClearanceEndpoints
     public static IEndpointRouteBuilder MapClearanceEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/compliance/clearance")
-            .WithTags("Compliance Clearance Cases");
+            .WithTags("Compliance Clearance Cases")
+            .RequireAuthorization();
 
         group.MapGet("/cases/trip/{tripId:guid}", async (
             Guid tripId,
@@ -41,8 +42,9 @@ public static class ClearanceEndpoints
             IClearanceService service,
             CancellationToken ct) =>
         {
-            var userId = TryGetUserId(user) ?? Guid.Parse("00000000-0000-0000-0000-000000000001");
-            var result = await service.CreateClearanceCaseAsync(userId, request, ct);
+            var userId = TryGetUserId(user);
+            if (userId is null) return Results.Unauthorized();
+            var result = await service.CreateClearanceCaseAsync(userId.Value, request, ct);
             return Results.Created($"/api/v1/compliance/clearance/cases/{result.Id}", ApiResponse<ClearanceCaseDto>.Success(result));
         })
         .WithName("CreateClearanceCase");
@@ -53,8 +55,9 @@ public static class ClearanceEndpoints
             IClearanceService service,
             CancellationToken ct) =>
         {
-            var userId = TryGetUserId(user) ?? Guid.Parse("00000000-0000-0000-0000-000000000001");
-            var result = await service.SubmitClearanceCaseAsync(id, userId, ct);
+            var userId = TryGetUserId(user);
+            if (userId is null) return Results.Unauthorized();
+            var result = await service.SubmitClearanceCaseAsync(id, userId.Value, ct);
             return result is not null
                 ? Results.Ok(ApiResponse<ClearanceCaseDto>.Success(result))
                 : Results.NotFound(ApiResponse<object>.Failure(404, "Clearance case not found."));
@@ -68,13 +71,15 @@ public static class ClearanceEndpoints
             IClearanceService service,
             CancellationToken ct) =>
         {
-            var reviewerId = TryGetUserId(user) ?? Guid.Parse("00000000-0000-0000-0000-000000000002");
-            var result = await service.ReviewClearanceCaseAsync(id, reviewerId, request, ct);
+            var reviewerId = TryGetUserId(user);
+            if (reviewerId is null) return Results.Unauthorized();
+            var result = await service.ReviewClearanceCaseAsync(id, reviewerId.Value, request, ct);
             return result is not null
                 ? Results.Ok(ApiResponse<ClearanceCaseDto>.Success(result))
                 : Results.NotFound(ApiResponse<object>.Failure(404, "Clearance case not found."));
         })
-        .WithName("ReviewClearanceCase");
+        .WithName("ReviewClearanceCase")
+        .RequireAuthorization("ComplianceOfficer");
 
         return app;
     }

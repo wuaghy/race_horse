@@ -13,9 +13,9 @@ public static class TransportRequestEndpoints
     {
         var customer = app.MapGroup("/api/v1/transport-requests")
             .RequireAuthorization("Customer");
-        customer.MapGet("/", async (int? page, int? pageSize, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
+        customer.MapGet("/", async (int? page, int? pageSize, string? search, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
         {
-            var result = await service.GetCustomerRequestsAsync(GetUserId(principal), page ?? 0, pageSize ?? 20, cancellationToken);
+            var result = await service.GetCustomerRequestsAsync(GetUserId(principal), page ?? 0, pageSize ?? 20, search, cancellationToken);
             return Results.Ok(ApiResponse<IReadOnlyList<TransportRequestListItem>>.Success(result.Items, ToPagination(result), requestId: GetRequestId(context)));
         }).WithName("ListCustomerTransportRequests");
         customer.MapPost("/", async (SaveTransportRequestRequest request, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
@@ -26,9 +26,12 @@ public static class TransportRequestEndpoints
         customer.MapGet("/{requestId:guid}", async (Guid requestId, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
         {
             var request = await service.GetCustomerRequestAsync(GetUserId(principal), requestId, cancellationToken);
-            return request is null
-                ? Results.NotFound(ApiResponse<object>.Failure(40400, "Transport request was not found.", requestId: GetRequestId(context)))
-                : Results.Ok(ApiResponse<TransportRequestRecord>.Success(request, requestId: GetRequestId(context)));
+            if (request is null)
+            {
+                var error = new ApiError { Field = "requestId", Reason = "TRANSPORT_REQUEST_NOT_FOUND", Message = "Transport request was not found." };
+                return Results.NotFound(ApiResponse<object>.Failure(40400, "Transport request was not found.", new List<ApiError> { error }, GetRequestId(context)));
+            }
+            return Results.Ok(ApiResponse<TransportRequestRecord>.Success(request, requestId: GetRequestId(context)));
         }).WithName("GetCustomerTransportRequest");
         customer.MapPut("/{requestId:guid}", async (Guid requestId, SaveTransportRequestRequest request, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
         {
@@ -51,9 +54,12 @@ public static class TransportRequestEndpoints
         manager.MapGet("/{requestId:guid}", async (Guid requestId, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
         {
             var request = await service.GetManagerRequestAsync(requestId, cancellationToken);
-            return request is null
-                ? Results.NotFound(ApiResponse<object>.Failure(40400, "Transport request was not found.", requestId: GetRequestId(context)))
-                : Results.Ok(ApiResponse<TransportRequestRecord>.Success(request, requestId: GetRequestId(context)));
+            if (request is null)
+            {
+                var error = new ApiError { Field = "requestId", Reason = "TRANSPORT_REQUEST_NOT_FOUND", Message = "Transport request was not found." };
+                return Results.NotFound(ApiResponse<object>.Failure(40400, "Transport request was not found.", new List<ApiError> { error }, GetRequestId(context)));
+            }
+            return Results.Ok(ApiResponse<TransportRequestRecord>.Success(request, requestId: GetRequestId(context)));
         }).WithName("GetManagerTransportRequest");
         manager.MapPost("/{requestId:guid}/start-review", async (Guid requestId, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
         {

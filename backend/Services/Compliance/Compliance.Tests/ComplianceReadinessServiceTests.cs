@@ -9,7 +9,7 @@ namespace Compliance.Tests;
 public class ComplianceReadinessServiceTests
 {
     [Fact]
-    public async Task EvaluateTripReadiness_NoRules_ReturnsReadyTrueAndCreatesOutbox()
+    public async Task EvaluateTripReadiness_NoRules_FailsClosedWithoutOutbox()
     {
         using var db = TestDbContextFactory.Create();
         var logger = NullLogger<ComplianceReadinessService>.Instance;
@@ -22,12 +22,11 @@ public class ComplianceReadinessServiceTests
 
         var result = await svc.EvaluateTripReadinessAsync(request, CancellationToken.None);
 
-        Assert.True(result.IsReady);
+        Assert.False(result.IsReady);
         Assert.Equal(0, result.TotalRequirements);
 
         var outbox = db.OutboxMessages.ToList();
-        Assert.Single(outbox);
-        Assert.Equal("Compliance.ComplianceReady", outbox[0].EventType);
+        Assert.Empty(outbox);
     }
 
     [Fact]
@@ -155,8 +154,10 @@ public class ComplianceReadinessServiceTests
             new List<Guid> { horseId }, DateOnly.FromDateTime(DateTime.UtcNow));
 
         var result = await svc.EvaluateTripReadinessAsync(request, CancellationToken.None);
+        var reevaluated = await svc.EvaluateTripReadinessAsync(request, CancellationToken.None);
 
         Assert.True(result.IsReady);
+        Assert.True(reevaluated.IsReady);
         Assert.Equal(1, result.TotalRequirements);
         Assert.Equal(1, result.MetRequirements);
 

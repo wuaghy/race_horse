@@ -96,8 +96,8 @@ public class ComplianceReadinessService : IComplianceReadinessService
         var expired = checkItems.Count(i => i.Status == "EXPIRED");
         var pending = checkItems.Count(i => i.Status == DocumentStatus.Uploaded || i.Status == DocumentStatus.UnderReview);
 
-        // Trip is ready when there is at least one requirement rule evaluated and ALL are met (or if no specific rules required, defaults to ready)
-        var isReady = total == 0 || met == total;
+        // Absence of applicable configuration is not proof that a trip is compliant.
+        var isReady = total > 0 && met == total;
 
         var result = new ComplianceReadinessResultDto(
             request.TripId,
@@ -115,48 +115,57 @@ public class ComplianceReadinessService : IComplianceReadinessService
 
         if (isReady)
         {
-            _logger.LogInformation("Trip {TripId} evaluated as Compliance READY ({Met}/{Total} requirements met). Creating Outbox Compliance.ComplianceReady.",
-                request.TripId, met, total);
+            var readyEventAlreadyQueued = await _db.OutboxMessages.AnyAsync(
+                message => message.EventType == "Compliance.ComplianceReady" &&
+                           message.AggregateType == "TripReadiness" &&
+                           message.AggregateId == request.TripId,
+                cancellationToken);
 
-            var readyEvent = new ComplianceComplianceReadyEvent
+            if (!readyEventAlreadyQueued)
             {
-                Data = new ComplianceComplianceReadyData(
-                    request.TripId,
-                    null,
-                    request.OriginCountryId,
-                    request.DestinationCountryId,
-                    DateTime.UtcNow,
-                    $"All {total} compliance requirements satisfied."),
-                CorrelationId = Guid.NewGuid()
-            };
+                _logger.LogInformation("Trip {TripId} evaluated as Compliance READY ({Met}/{Total} requirements met). Creating Outbox Compliance.ComplianceReady.",
+                    request.TripId, met, total);
 
-            _db.OutboxMessages.Add(new OutboxMessage
-            {
-                Id = Guid.NewGuid(),
-                EventType = readyEvent.EventType,
-                AggregateType = "TripReadiness",
-                AggregateId = request.TripId,
-                Payload = JsonSerializer.Serialize(readyEvent),
-                CorrelationId = readyEvent.CorrelationId,
-                OccurredAt = readyEvent.OccurredAt,
-                Status = "PENDING"
-            });
+                var readyEvent = new ComplianceComplianceReadyEvent
+                {
+                    Data = new ComplianceComplianceReadyData(
+                        request.TripId,
+                        null,
+                        request.OriginCountryId,
+                        request.DestinationCountryId,
+                        DateTime.UtcNow,
+                        $"All {total} compliance requirements satisfied."),
+                    CorrelationId = Guid.NewGuid()
+                };
 
-            _db.AuditLogs.Add(new AuditLog
-            {
-                Id = Guid.NewGuid(),
-                EntityType = "TripReadiness",
-                EntityId = request.TripId,
-                Action = "COMPLIANCE_READY_EVALUATED",
-                OldState = null,
-                NewState = "READY",
-                ActorUserId = Guid.Empty, // System
-                Reason = $"Evaluated readiness: {met}/{total} rules met.",
-                OccurredAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
-            });
+                _db.OutboxMessages.Add(new OutboxMessage
+                {
+                    Id = Guid.NewGuid(),
+                    EventType = readyEvent.EventType,
+                    AggregateType = "TripReadiness",
+                    AggregateId = request.TripId,
+                    Payload = JsonSerializer.Serialize(readyEvent),
+                    CorrelationId = readyEvent.CorrelationId,
+                    OccurredAt = readyEvent.OccurredAt,
+                    Status = "PENDING"
+                });
 
-            await _db.SaveChangesAsync(cancellationToken);
+                _db.AuditLogs.Add(new AuditLog
+                {
+                    Id = Guid.NewGuid(),
+                    EntityType = "TripReadiness",
+                    EntityId = request.TripId,
+                    Action = "COMPLIANCE_READY_EVALUATED",
+                    OldState = null,
+                    NewState = "READY",
+                    ActorUserId = Guid.Empty, // System
+                    Reason = $"Evaluated readiness: {met}/{total} rules met.",
+                    OccurredAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                await _db.SaveChangesAsync(cancellationToken);
+            }
         }
         else
         {

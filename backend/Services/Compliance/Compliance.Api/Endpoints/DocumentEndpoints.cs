@@ -12,7 +12,8 @@ public static class DocumentEndpoints
     public static IEndpointRouteBuilder MapDocumentEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/compliance/documents")
-            .WithTags("Compliance Documents");
+            .WithTags("Compliance Documents")
+            .RequireAuthorization();
 
         group.MapGet("/", async (
             [FromQuery] Guid? horseId,
@@ -41,14 +42,31 @@ public static class DocumentEndpoints
         })
         .WithName("GetDocumentById");
 
+        group.MapGet("/{id:guid}/file", async (
+            Guid id,
+            IDocumentService service,
+            IFileStorageService fileStorage,
+            CancellationToken ct) =>
+        {
+            var document = await service.GetDocumentByIdAsync(id, ct);
+            if (document is null) return Results.NotFound(ApiResponse<object>.Failure(404, "Document not found."));
+
+            var stream = await fileStorage.DownloadFileAsync(document.FileUrl, ct);
+            if (stream is null) return Results.NotFound(ApiResponse<object>.Failure(404, "Document file not found."));
+
+            return Results.File(stream, "application/octet-stream", Path.GetFileName(document.FileName));
+        })
+        .WithName("DownloadDocumentFile");
+
         group.MapPost("/upload", async (
             [FromBody] UploadDocumentRequest request,
             ClaimsPrincipal user,
             IDocumentService service,
             CancellationToken ct) =>
         {
-            var userId = TryGetUserId(user) ?? Guid.Parse("00000000-0000-0000-0000-000000000001");
-            var result = await service.UploadDocumentAsync(userId, request, ct);
+            var userId = TryGetUserId(user);
+            if (userId is null) return Results.Unauthorized();
+            var result = await service.UploadDocumentAsync(userId.Value, request, ct);
             return Results.Created($"/api/v1/compliance/documents/{result.Id}", ApiResponse<DocumentDto>.Success(result));
         })
         .WithName("UploadDocument");
@@ -72,7 +90,8 @@ public static class DocumentEndpoints
                 return Results.BadRequest(ApiResponse<object>.Failure(400, "No file uploaded or file is empty."));
             }
 
-            var userId = TryGetUserId(user) ?? Guid.Parse("00000000-0000-0000-0000-000000000001");
+            var userId = TryGetUserId(user);
+            if (userId is null) return Results.Unauthorized();
 
             await using var stream = file.OpenReadStream();
             var fileUrl = await fileStorage.UploadFileAsync(stream, file.FileName, file.ContentType, ct);
@@ -91,7 +110,7 @@ public static class DocumentEndpoints
                 IssuingAuthority: issuingAuthority
             );
 
-            var result = await service.UploadDocumentAsync(userId, uploadRequest, ct);
+            var result = await service.UploadDocumentAsync(userId.Value, uploadRequest, ct);
             return Results.Created($"/api/v1/compliance/documents/{result.Id}", ApiResponse<DocumentDto>.Success(result));
         })
         .DisableAntiforgery()
@@ -104,14 +123,16 @@ public static class DocumentEndpoints
             IDocumentService service,
             CancellationToken ct) =>
         {
-            var reviewerId = TryGetUserId(user) ?? Guid.Parse("00000000-0000-0000-0000-000000000002");
-            var result = await service.ReviewDocumentAsync(id, reviewerId, request, ct);
+            var reviewerId = TryGetUserId(user);
+            if (reviewerId is null) return Results.Unauthorized();
+            var result = await service.ReviewDocumentAsync(id, reviewerId.Value, request, ct);
 
             return result is not null
                 ? Results.Ok(ApiResponse<DocumentDto>.Success(result))
                 : Results.NotFound(ApiResponse<object>.Failure(404, "Document not found."));
         })
-        .WithName("ReviewDocument");
+        .WithName("ReviewDocument")
+        .RequireAuthorization("ComplianceOfficer");
 
         return app;
     }
