@@ -1,8 +1,8 @@
 using BuildingBlocks.Api;
 using BuildingBlocks.Middleware;
 using Tracking.Api.Endpoints;
-using Tracking.Application;
-using Tracking.Infrastructure;
+using Tracking.Application.Services;
+using Tracking.Infrastructure.Repositories;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -57,11 +57,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
-// Register Application Services
-builder.Services.AddTrackingApplication();
+// Register Trip Execution services
+builder.Services.AddScoped<ITripExecutionService, TripExecutionService>();
+builder.Services.AddScoped<ITripExecutionRepository, InMemoryTripExecutionRepository>();
+builder.Services.AddScoped<ICheckpointEventRepository, InMemoryCheckpointEventRepository>();
+builder.Services.AddScoped<IOutboxMessageRepository, InMemoryOutboxMessageRepository>();
 
-// Register Tracking Infrastructure
-builder.Services.AddTrackingInfrastructure(builder.Configuration);
+// Register GPS Tracking services
+builder.Services.AddScoped<IGpsTrackingService, GpsTrackingService>();
+builder.Services.AddScoped<IGpsPointRepository, InMemoryGpsPointRepository>();
+builder.Services.AddScoped<ILocationHistoryRepository, InMemoryLocationHistoryRepository>();
+builder.Services.AddScoped<IEtaRepository, InMemoryEtaRepository>();
+
+// Register Horse Health services
+builder.Services.AddScoped<IHorseHealthService, HorseHealthService>();
+builder.Services.AddScoped<IHealthLogRepository, InMemoryHealthLogRepository>();
+builder.Services.AddScoped<IHealthAlertRepository, InMemoryHealthAlertRepository>();
+builder.Services.AddScoped<IHealthStatusRepository, InMemoryHealthStatusRepository>();
 
 var app = builder.Build();
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();

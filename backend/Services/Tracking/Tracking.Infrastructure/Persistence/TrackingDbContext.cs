@@ -19,6 +19,11 @@ public class TrackingDbContext : DbContext
     public DbSet<HealthAlert> HealthAlerts { get; set; }
     public DbSet<HorseHealthStatus> HealthStatuses { get; set; }
 
+    public new async Task SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        await base.SaveChangesAsync(cancellationToken);
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

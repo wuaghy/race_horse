@@ -121,10 +121,29 @@ public class EFGpsPointRepository : IGpsPointRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<GpsPoint>> GetByTripExecutionIdAsync(Guid tripExecutionId, CancellationToken cancellationToken)
+    public async Task<GpsPoint?> GetLatestByTripExecutionIdAsync(Guid tripExecutionId, CancellationToken cancellationToken)
     {
         return await _context.GpsPoints
             .Where(g => g.TripExecutionId == tripExecutionId)
+            .OrderByDescending(g => g.RecordedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<GpsPoint>> GetByTripExecutionIdAsync(Guid tripExecutionId, int limit, CancellationToken cancellationToken)
+    {
+        return await _context.GpsPoints
+            .Where(g => g.TripExecutionId == tripExecutionId)
+            .OrderByDescending(g => g.RecordedAt)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<GpsPoint>> GetRecentPointsAsync(Guid tripExecutionId, int count, CancellationToken cancellationToken)
+    {
+        return await _context.GpsPoints
+            .Where(g => g.TripExecutionId == tripExecutionId)
+            .OrderByDescending(g => g.RecordedAt)
+            .Take(count)
             .OrderBy(g => g.RecordedAt)
             .ToListAsync(cancellationToken);
     }
@@ -142,6 +161,12 @@ public class EFLocationHistoryRepository : ILocationHistoryRepository
     public async Task AddAsync(LocationHistory history, CancellationToken cancellationToken)
     {
         _context.LocationHistories.Add(history);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpdateAsync(LocationHistory history, CancellationToken cancellationToken)
+    {
+        _context.LocationHistories.Update(history);
         await _context.SaveChangesAsync(cancellationToken);
     }
 
@@ -163,27 +188,18 @@ public class EFEtaRepository : IEtaRepository
         _context = context;
     }
 
-    public async Task AddOrUpdateAsync(EstimatedTimeOfArrival eta, CancellationToken cancellationToken)
+    public async Task AddAsync(EstimatedTimeOfArrival eta, CancellationToken cancellationToken)
     {
-        var existing = await _context.EstimatedTimesOfArrival
-            .FirstOrDefaultAsync(e => e.TripExecutionId == eta.TripExecutionId, cancellationToken);
-
-        if (existing is null)
-        {
-            _context.EstimatedTimesOfArrival.Add(eta);
-        }
-        else
-        {
-            _context.EstimatedTimesOfArrival.Update(eta);
-        }
-
+        _context.EstimatedTimesOfArrival.Add(eta);
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<EstimatedTimeOfArrival?> GetByTripExecutionIdAsync(Guid tripExecutionId, CancellationToken cancellationToken)
+    public async Task<EstimatedTimeOfArrival?> GetLatestByTripExecutionIdAsync(Guid tripExecutionId, CancellationToken cancellationToken)
     {
         return await _context.EstimatedTimesOfArrival
-            .FirstOrDefaultAsync(e => e.TripExecutionId == tripExecutionId, cancellationToken);
+            .Where(e => e.TripExecutionId == tripExecutionId)
+            .OrderByDescending(e => e.CalculatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 }
 
@@ -202,10 +218,23 @@ public class EFHealthLogRepository : IHealthLogRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<HorseHealthLog>> GetByTripExecutionIdAsync(Guid tripExecutionId, CancellationToken cancellationToken)
+    public async Task<HorseHealthLog?> GetByIdAndTripExecutionIdAsync(Guid id, Guid tripExecutionId, CancellationToken cancellationToken)
     {
         return await _context.HealthLogs
-            .Where(h => h.TripExecutionId == tripExecutionId)
+            .FirstOrDefaultAsync(h => h.Id == id && h.TripExecutionId == tripExecutionId, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<HorseHealthLog>> GetByTripExecutionIdAsync(Guid tripExecutionId, Guid? horseId, CancellationToken cancellationToken)
+    {
+        var query = _context.HealthLogs
+            .Where(h => h.TripExecutionId == tripExecutionId);
+
+        if (horseId.HasValue)
+        {
+            query = query.Where(h => h.HorseId == horseId.Value);
+        }
+
+        return await query
             .OrderByDescending(h => h.RecordedAt)
             .ToListAsync(cancellationToken);
     }
@@ -232,10 +261,28 @@ public class EFHealthAlertRepository : IHealthAlertRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<HealthAlert>> GetByTripExecutionIdAsync(Guid tripExecutionId, CancellationToken cancellationToken)
+    public async Task<HealthAlert?> GetByIdAndTripExecutionIdAsync(Guid id, Guid tripExecutionId, CancellationToken cancellationToken)
     {
         return await _context.HealthAlerts
-            .Where(a => a.TripExecutionId == tripExecutionId)
+            .FirstOrDefaultAsync(a => a.Id == id && a.TripExecutionId == tripExecutionId, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<HealthAlert>> GetByTripExecutionIdAsync(Guid tripExecutionId, Guid? horseId, bool? unacknowledgedOnly, CancellationToken cancellationToken)
+    {
+        var query = _context.HealthAlerts
+            .Where(a => a.TripExecutionId == tripExecutionId);
+
+        if (horseId.HasValue)
+        {
+            query = query.Where(a => a.HorseId == horseId.Value);
+        }
+
+        if (unacknowledgedOnly == true)
+        {
+            query = query.Where(a => !a.Acknowledged);
+        }
+
+        return await query
             .OrderByDescending(a => a.AlertedAt)
             .ToListAsync(cancellationToken);
     }
@@ -250,10 +297,10 @@ public class EFHealthStatusRepository : IHealthStatusRepository
         _context = context;
     }
 
-    public async Task AddOrUpdateAsync(HorseHealthStatus status, CancellationToken cancellationToken)
+    public async Task UpsertAsync(HorseHealthStatus status, CancellationToken cancellationToken)
     {
         var existing = await _context.HealthStatuses
-            .FirstOrDefaultAsync(s => s.TripExecutionId == status.TripExecutionId, cancellationToken);
+            .FirstOrDefaultAsync(s => s.TripExecutionId == status.TripExecutionId && s.HorseId == status.HorseId, cancellationToken);
 
         if (existing is null)
         {
@@ -267,9 +314,9 @@ public class EFHealthStatusRepository : IHealthStatusRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<HorseHealthStatus?> GetByTripExecutionIdAsync(Guid tripExecutionId, CancellationToken cancellationToken)
+    public async Task<HorseHealthStatus?> GetByTripExecutionIdAndHorseIdAsync(Guid tripExecutionId, Guid? horseId, CancellationToken cancellationToken)
     {
         return await _context.HealthStatuses
-            .FirstOrDefaultAsync(s => s.TripExecutionId == tripExecutionId, cancellationToken);
+            .FirstOrDefaultAsync(s => s.TripExecutionId == tripExecutionId && s.HorseId == horseId, cancellationToken);
     }
 }
