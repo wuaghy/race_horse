@@ -211,6 +211,40 @@ public class TripPlanningServiceTests
         Assert.NotNull(outbox);
     }
 
+    [Fact]
+    public async Task EmergencyRouteChange_CreatesVersion_RequiresApproval_AndArchivesPriorRouteOnApply()
+    {
+        using var db = TestDbContextFactory.Create();
+        var svc = new TripPlanningService(db);
+        var (trip, plan, activeVersion, locA, locB) = await SetupActiveRouteTripAsync(db, svc);
+        var coordinatorId = Guid.NewGuid();
+
+        var proposal = await svc.CreateRouteChangeProposalAsync(
+            trip.Id,
+            coordinatorId,
+            new CreateRouteChangeRequestInput("Flooded road", 95, 125.50m, "USD"),
+            Guid.NewGuid());
+
+        Assert.Equal(PlanningConstants.RouteVersionStatus.Draft, proposal.Status);
+        Assert.Equal(95, proposal.EstimatedDurationMinutes);
+        Assert.Equal(125.50m, proposal.AdditionalCost);
+        Assert.Equal("USD", proposal.CurrencyCode);
+        Assert.Equal(activeVersion.Id, (await db.RoutePlans.SingleAsync(x => x.Id == plan.Id)).ActiveVersionId);
+
+        var departure = DateTime.UtcNow.AddDays(2);
+        await svc.AddLegAsync(proposal.Id, new RouteLegInput(1, locA.Id, locB.Id, "ROAD", departure, departure.AddHours(3)));
+        await svc.SubmitRouteVersionAsync(proposal.Id, coordinatorId);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => svc.ActivateRouteVersionAsync(proposal.Id, coordinatorId));
+        await svc.ApproveRouteVersionAsync(proposal.Id, Guid.NewGuid());
+        await svc.ActivateRouteVersionAsync(proposal.Id, Guid.NewGuid());
+
+        Assert.Equal(PlanningConstants.RouteVersionStatus.Archived,
+            (await db.RoutePlanVersions.SingleAsync(x => x.Id == activeVersion.Id)).Status);
+        Assert.Equal("Planning.RouteChangeApplied",
+            (await db.OutboxMessages.SingleAsync(x => x.AggregateId == proposal.Id)).EventType);
+        Assert.Contains(await db.AuditLogs.Where(x => x.EntityId == proposal.Id).ToListAsync(), x => x.Action == "ROUTE_CHANGE_PROPOSED");
+    }
+
     private static async Task<(TripDto Trip, RoutePlanDto Plan, RoutePlanVersionDto Version, Location LocA, Location LocB)>
         SetupActiveRouteTripAsync(PlanningDbContext db, TripPlanningService svc)
     {

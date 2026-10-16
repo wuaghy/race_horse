@@ -40,7 +40,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("PlanningAccess", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningAccess", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningApproval", policy => policy.RequireRole("LOGISTICS_MANAGER", "ADMIN"));
 });
 
 var planningConnection = builder.Configuration.GetConnectionString("PlanningDb");

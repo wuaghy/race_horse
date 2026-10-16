@@ -12,6 +12,7 @@ public interface ITripPlanningService
     Task<RoutePlanDto> CreateRoutePlanAsync(Guid tripId, Guid actorUserId, CancellationToken ct = default);
     Task<IReadOnlyList<RoutePlanVersionDto>> GetVersionsAsync(Guid planId, CancellationToken ct = default);
     Task<RoutePlanVersionDto> CreateNewVersionAsync(Guid planId, Guid actorUserId, string? reason = null, CancellationToken ct = default);
+    Task<RoutePlanVersionDto> CreateRouteChangeProposalAsync(Guid tripId, Guid actorUserId, CreateRouteChangeRequestInput input, Guid? correlationId = null, CancellationToken ct = default);
 
     // Route Legs (editable only when version is DRAFT)
     Task<IReadOnlyList<RouteLegDto>> GetLegsAsync(Guid versionId, CancellationToken ct = default);
@@ -34,5 +35,6 @@ public interface ITripPlanningService
     // State Transitions
     Task<RoutePlanVersionDto> SubmitRouteVersionAsync(Guid versionId, Guid actorUserId, CancellationToken ct = default);
     Task<RoutePlanVersionDto> ApproveRouteVersionAsync(Guid versionId, Guid actorUserId, CancellationToken ct = default);
+    Task<RoutePlanVersionDto> RejectRouteVersionAsync(Guid versionId, Guid actorUserId, string reason, Guid? correlationId = null, CancellationToken ct = default);
     Task<RoutePlanVersionDto> ActivateRouteVersionAsync(Guid versionId, Guid actorUserId, CancellationToken ct = default);
 }

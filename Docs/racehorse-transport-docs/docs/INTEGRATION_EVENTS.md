@@ -121,6 +121,8 @@ Consumers:
 
 Producer: Planning
 
+Data includes `tripId`, `routePlanId`, `routePlanVersionId`, `versionNo`, `delayEstimateMinutes`, `additionalCost`, `currencyCode`, and the proposal `reason`. It is emitted only after an approved route version becomes active; the prior version is archived in the same Planning database save.
+
 Consumers:
 
 - Tracking

@@ -6,6 +6,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Planning.Application.DTOs.Planning;
 using Planning.Application.Services;
+using Planning.Domain;
+using Planning.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -72,6 +75,7 @@ public class RabbitMqEventConsumerService : BackgroundService
             // Bind events consumed by Planning (per docs/INTEGRATION_EVENTS.md)
             await _channel.QueueBindAsync(_options.QueueName, _options.ExchangeName, "Booking.OrderCreated", cancellationToken: stoppingToken);
             await _channel.QueueBindAsync(_options.QueueName, _options.ExchangeName, "Compliance.ComplianceReady", cancellationToken: stoppingToken);
+            await _channel.QueueBindAsync(_options.QueueName, _options.ExchangeName, "Handover.HandoverCompleted", cancellationToken: stoppingToken);
 
             var consumer = new AsyncEventingBasicConsumer(_channel);
             consumer.ReceivedAsync += async (_, ea) =>
@@ -143,6 +147,47 @@ public class RabbitMqEventConsumerService : BackgroundService
                 var readinessSvc = scope.ServiceProvider.GetRequiredService<ITripReadinessService>();
                 await readinessSvc.SetComplianceReadyAsync(tripId, ct);
                 _logger.LogInformation("Auto-marked ComplianceReady for Trip {TripId} from Compliance.ComplianceReady.", tripId);
+            }
+        }
+        else if (eventType == "Handover.HandoverCompleted")
+        {
+            if (data.TryGetProperty("tripId", out var tripIdProp) && Guid.TryParse(tripIdProp.GetString(), out var tripId)
+                && data.TryGetProperty("completedByUserId", out var actorProp) && Guid.TryParse(actorProp.GetString(), out var actorId))
+            {
+                var db = scope.ServiceProvider.GetRequiredService<PlanningDbContext>();
+                var trip = await db.TransportTrips.SingleOrDefaultAsync(x => x.Id == tripId, ct);
+                if (trip is null)
+                {
+                    _logger.LogWarning("Ignoring Handover.HandoverCompleted for unknown Trip {TripId}.", tripId);
+                    return;
+                }
+
+                if (trip.Status != PlanningConstants.TripStatus.Completed)
+                {
+                    var oldState = trip.Status;
+                    trip.Status = PlanningConstants.TripStatus.Completed;
+                    trip.UpdatedAt = DateTime.UtcNow;
+                    trip.VersionNo++;
+                    db.AuditLogs.Add(new AuditLog
+                    {
+                        EntityType = "TransportTrip",
+                        EntityId = trip.Id,
+                        Action = "HANDOVER_COMPLETED",
+                        OldState = oldState,
+                        NewState = trip.Status,
+                        ActorUserId = actorId,
+                        Reason = $"Handover {data.GetProperty("handoverNo").GetString()} completed.",
+                        CorrelationId = root.TryGetProperty("correlationId", out var correlation) && Guid.TryParse(correlation.GetString(), out var correlationId) ? correlationId : null,
+                        OccurredAt = DateTime.UtcNow
+                    });
+                    await db.SaveChangesAsync(ct);
+                }
+
+                _logger.LogInformation("Marked Trip {TripId} completed from Handover.HandoverCompleted.", tripId);
+            }
+            else
+            {
+                throw new InvalidOperationException("Handover.HandoverCompleted is missing tripId or completedByUserId.");
             }
         }
     }

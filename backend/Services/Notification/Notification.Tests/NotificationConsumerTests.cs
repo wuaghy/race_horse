@@ -64,6 +64,8 @@ public class NotificationConsumerTests
         var inboxCountAfterFirst = await db.InboxMessages.CountAsync();
         Assert.Equal(1, notifCountAfterFirst);
         Assert.Equal(1, inboxCountAfterFirst);
+        Assert.Equal(Guid.Parse("22222222-2222-4222-8222-222222222222"),
+            (await db.Notifications.SingleAsync()).RecipientUserId);
 
         // Act 2: Duplicate delivery of same eventId (at-least-once simulation)
         var result2 = await consumer.ProcessEventAsync(eventPayload);

@@ -45,6 +45,14 @@ public record RoutePlanVersionDto(
 
 public record CreateRoutePlanVersionInput(string? Reason = null);
 
+public record CreateRouteChangeRequestInput(
+    string Reason,
+    int DelayEstimateMinutes,
+    decimal AdditionalCost,
+    string CurrencyCode);
+
+public record RejectRouteChangeInput(string Reason);
+
 public record RouteLegDto(
     Guid Id,
     Guid RoutePlanVersionId,

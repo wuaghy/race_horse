@@ -1,6 +1,32 @@
 @Handover.Api_HostAddress = http://localhost:5144
+@AccessToken = replace-with-jwt
 
-GET {{Handover.Api_HostAddress}}/weatherforecast/
+### Health check
+GET {{Handover.Api_HostAddress}}/health
 Accept: application/json
 
-###
+### List handovers
+GET {{Handover.Api_HostAddress}}/api/v1/handovers?page=0&pageSize=20
+Authorization: Bearer {{AccessToken}}
+Accept: application/json
+
+### Create handover draft
+POST {{Handover.Api_HostAddress}}/api/v1/handovers
+Authorization: Bearer {{AccessToken}}
+Content-Type: application/json
+
+{
+  "tripId": "77777777-7777-4777-8777-777777777771",
+  "receiverName": "Tokyo Racecourse Stable Manager",
+  "receiverPhone": "+81-3-5555-0199",
+  "receiverEmail": "receiver@racecourse.jp",
+  "handoverLocationId": "66666666-6666-4666-8666-666666666662",
+  "scheduledAt": "2026-10-22T10:00:00Z",
+  "notes": "Prepare final veterinary handover check.",
+  "horses": [
+    {
+      "horseId": "44444444-4444-4444-8444-444444444441",
+      "condition": "Healthy and calm after arrival"
+    }
+  ]
+}

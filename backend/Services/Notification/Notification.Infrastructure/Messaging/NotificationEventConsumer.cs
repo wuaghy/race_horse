@@ -184,7 +184,7 @@ public class NotificationEventConsumer : BackgroundService
         var list = new List<Notification.Domain.Entities.Notification>();
 
         // Default admin / coordinator system recipient fallback
-        var systemCoordinatorId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var systemCoordinatorId = Guid.Parse("22222222-2222-4222-8222-222222222222");
 
         switch (eventType)
         {

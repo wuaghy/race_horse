@@ -13,30 +13,37 @@ public static class HorseHealthEndpoints
             .RequireAuthorization();
 
         health.MapPost("/logs", RecordHealthLog)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("RecordHealthLog")
             .WithOpenApi();
 
         health.MapGet("/logs", GetHealthLogs)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetHealthLogs")
             .WithOpenApi();
 
         health.MapGet("/logs/{logId:guid}", GetHealthLog)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetHealthLog")
             .WithOpenApi();
 
         health.MapPost("/alerts", CreateHealthAlert)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("CreateHealthAlert")
             .WithOpenApi();
 
         health.MapGet("/alerts", GetHealthAlerts)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetHealthAlerts")
             .WithOpenApi();
 
         health.MapPost("/alerts/{alertId:guid}/acknowledge", AcknowledgeAlert)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("AcknowledgeAlert")
             .WithOpenApi();
 
         health.MapGet("/status", GetHealthStatus)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetHealthStatus")
             .WithOpenApi();
     }

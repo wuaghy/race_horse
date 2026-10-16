@@ -44,6 +44,7 @@ public static class SeedingEndpoints
             tripId,
             37.7749m, // San Francisco latitude
             -122.4194m, // San Francisco longitude
+            Guid.Empty,
             cancellationToken);
 
         // Create checkpoints

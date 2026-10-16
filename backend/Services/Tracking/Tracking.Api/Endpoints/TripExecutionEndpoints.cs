@@ -1,4 +1,5 @@
 using BuildingBlocks.Api;
+using System.Security.Claims;
 using Tracking.Application.DTOs;
 using Tracking.Application.Services;
 
@@ -13,34 +14,42 @@ public static class TripExecutionEndpoints
             .RequireAuthorization();
 
         trips.MapPost("/", InitiateTripExecution)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("InitiateTripExecution")
             .WithOpenApi();
 
         trips.MapGet("/{tripId:guid}", GetTripExecution)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetTripExecution")
             .WithOpenApi();
 
         trips.MapPost("/{tripId:guid}/departure", RecordTripDeparture)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("RecordTripDeparture")
             .WithOpenApi();
 
         trips.MapPost("/{tripId:guid}/arrival", RecordTripArrival)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("RecordTripArrival")
             .WithOpenApi();
 
         trips.MapPut("/{tripId:guid}/location", UpdateTripLocation)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("UpdateTripLocation")
             .WithOpenApi();
 
         trips.MapPost("/{tripId:guid}/checkpoints", RecordCheckpointEvent)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("RecordCheckpointEvent")
             .WithOpenApi();
 
         trips.MapGet("/{tripId:guid}/checkpoints", GetCheckpointEvents)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetCheckpointEvents")
             .WithOpenApi();
 
         trips.MapGet("/{tripId:guid}/checkpoints/{checkpointId:guid}", GetCheckpointEvent)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetCheckpointEvent")
             .WithOpenApi();
     }
@@ -74,11 +83,14 @@ public static class TripExecutionEndpoints
     private static async Task<IResult> RecordTripDeparture(
         Guid tripId,
         RecordTripDepartureRequest request,
+        ClaimsPrincipal user,
         ITripExecutionService service,
         HttpContext context,
         CancellationToken cancellationToken)
     {
-        var result = await service.RecordTripDepartureAsync(tripId, request.Latitude, request.Longitude, cancellationToken);
+        if (!Guid.TryParse(user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actorUserId))
+            return Results.Unauthorized();
+        var result = await service.RecordTripDepartureAsync(tripId, request.Latitude, request.Longitude, actorUserId, cancellationToken);
         return Results.Ok(ApiResponse<TripExecutionDto>.Success(result, "Trip departure recorded.", GetRequestId(context)));
     }
 

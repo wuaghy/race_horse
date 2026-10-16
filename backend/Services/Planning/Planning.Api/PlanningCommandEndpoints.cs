@@ -22,6 +22,21 @@ public static class PlanningCommandEndpoints
         api.MapGet("/trips/{id:guid}", async (Guid id, ITripPlanningService svc, CancellationToken ct) =>
             Results.Ok(ApiResponse<TripDto>.Success(await svc.GetTripByIdAsync(id, ct))));
 
+        api.MapPost("/trips/{id:guid}/route-change-requests", async (
+            Guid id,
+            CreateRouteChangeRequestInput input,
+            ClaimsPrincipal user,
+            HttpContext context,
+            ITripPlanningService svc,
+            CancellationToken ct) =>
+        {
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            var correlationId = Guid.TryParse(context.Request.Headers["X-Correlation-ID"].FirstOrDefault(), out var parsed) ? parsed : (Guid?)null;
+            var proposal = await svc.CreateRouteChangeProposalAsync(id, actorId.Value, input, correlationId, ct);
+            return Results.Created($"/api/v1/route-plan-versions/{proposal.Id}", ApiResponse<RoutePlanVersionDto>.Success(proposal, "Emergency route change proposed as a new immutable version."));
+        });
+
         // ==========================================
         // Route Plans & Versions (T10)
         // ==========================================
@@ -121,14 +136,22 @@ public static class PlanningCommandEndpoints
             var actorId = GetActorId(user);
             if (actorId is null) return Results.Unauthorized();
             return Results.Ok(ApiResponse<RoutePlanVersionDto>.Success(await svc.ApproveRouteVersionAsync(id, actorId.Value, ct), "Route version approved"));
-        });
+        }).RequireAuthorization("PlanningApproval");
+
+        api.MapPost("/route-plan-versions/{id:guid}/reject", async (Guid id, RejectRouteChangeInput input, ClaimsPrincipal user, HttpContext context, ITripPlanningService svc, CancellationToken ct) =>
+        {
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            var correlationId = Guid.TryParse(context.Request.Headers["X-Correlation-ID"].FirstOrDefault(), out var parsed) ? parsed : (Guid?)null;
+            return Results.Ok(ApiResponse<RoutePlanVersionDto>.Success(await svc.RejectRouteVersionAsync(id, actorId.Value, input.Reason, correlationId, ct), "Route change rejected."));
+        }).RequireAuthorization("PlanningApproval");
 
         api.MapPost("/route-plan-versions/{id:guid}/activate", async (Guid id, ClaimsPrincipal user, ITripPlanningService svc, CancellationToken ct) =>
         {
             var actorId = GetActorId(user);
             if (actorId is null) return Results.Unauthorized();
             return Results.Ok(ApiResponse<RoutePlanVersionDto>.Success(await svc.ActivateRouteVersionAsync(id, actorId.Value, ct), "Route version activated"));
-        });
+        }).RequireAuthorization("PlanningApproval");
 
         // ==========================================
         // Readiness & Pre-departure (T11)

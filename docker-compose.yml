@@ -78,6 +78,7 @@ services:
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Enabled: "true"
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
     ports:
@@ -131,6 +132,7 @@ services:
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Enabled: "true"
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
       RabbitMQ__ExchangeName: racehorse.events
@@ -143,6 +145,8 @@ services:
       dockerfile: Services/Tracking/Tracking.Api/Dockerfile
     container_name: racehorse_tracking_api
     depends_on:
+      db-init:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
     environment:
@@ -152,11 +156,98 @@ services:
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Enabled: "true"
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
       RabbitMQ__ExchangeName: racehorse.events
     ports:
       - "${TRACKING_PORT:-8084}:8080"
+    networks:
+      - racehorse_net
+
+  handover-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Handover/Handover.Api/Dockerfile
+    container_name: racehorse_handover_api
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__HandoverDb: "Server=sqlserver,1433;Database=HandoverDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__ExchangeName: racehorse.events
+      Storage__HandoverDirectory: /app/App_Data/handover-files
+    ports:
+      - "${HANDOVER_PORT:-8085}:8080"
+    volumes:
+      - handover_files:/app/App_Data/handover-files
+    networks:
+      - racehorse_net
+
+  incident-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Incident/Incident.Api/Dockerfile
+    container_name: racehorse_incident_api
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__IncidentDb: "Server=sqlserver,1433;Database=IncidentDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Enabled: "true"
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__ExchangeName: racehorse.events
+      Storage__LocalDirectory: /app/App_Data/incident-files
+    ports:
+      - "${INCIDENT_PORT:-8086}:8080"
+    volumes:
+      - incident_files:/app/App_Data/incident-files
+    networks:
+      - racehorse_net
+
+  notification-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Notification/Notification.Api/Dockerfile
+    container_name: racehorse_notification_api
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__NotificationDb: "Server=sqlserver,1433;Database=NotificationDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
+      Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
+      RabbitMQ__HostName: rabbitmq
+      RabbitMQ__Enabled: "true"
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__ExchangeName: racehorse.events
+    ports:
+      - "${NOTIFICATION_PORT:-8087}:8080"
     networks:
       - racehorse_net
 
@@ -171,6 +262,9 @@ services:
       - compliance-api
       - planning-api
       - tracking-api
+      - handover-api
+      - incident-api
+      - notification-api
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     environment:
@@ -183,6 +277,9 @@ services:
       ReverseProxy__Clusters__compliance__Destinations__compliance-api__Address: http://compliance-api:8080/
       ReverseProxy__Clusters__planning__Destinations__planning-api__Address: http://planning-api:8080/
       ReverseProxy__Clusters__tracking__Destinations__tracking-api__Address: http://tracking-api:8080/
+      ReverseProxy__Clusters__handover__Destinations__handover-api__Address: http://handover-api:8080/
+      ReverseProxy__Clusters__incident__Destinations__incident-api__Address: http://incident-api:8080/
+      ReverseProxy__Clusters__notification__Destinations__notification-api__Address: http://notification-api:8080/
     networks:
       - racehorse_net
 
@@ -251,6 +348,8 @@ volumes:
   rabbitmq_data:
   minio_data:
   compliance_files:
+  handover_files:
+  incident_files:
 
 networks:
   racehorse_net:

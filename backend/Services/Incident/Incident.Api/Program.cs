@@ -15,20 +15,28 @@ builder.Services.AddSwaggerGen();
 // Infrastructure
 builder.Services.AddIncidentInfrastructure(builder.Configuration);
 
-// Auth
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "SuperSecretKeyForRacehorseTransportSystemMustBeLongEnough123!";
+// Auth: share the same issuer/audience/signing key contract as Gateway.
+var jwtKey = builder.Configuration["Jwt:SigningKey"];
+if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
+    throw new InvalidOperationException("Jwt:SigningKey must be provided through a secret configuration source and contain at least 32 bytes.");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "racehorse-identity";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "racehorse-api";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.RequireHttpsMetadata = false;
-        options.SaveToken = true;
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = false,
-            ValidateAudience = false,
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.FromSeconds(30),
+            NameClaimType = "name",
+            RoleClaimType = "role"
         };
     });
 

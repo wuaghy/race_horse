@@ -26,3 +26,5 @@ events/
   Planning.RouteChangeApplied.v1.json
   Handover.HandoverCompleted.v1.json
 ```
+
+Implemented route contract: see [`TRACKING_API.md`](TRACKING_API.md) for T12–T14 service-native paths and collision-safe gateway aliases.

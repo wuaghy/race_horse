@@ -140,6 +140,46 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
         return MapVersion(newVersion);
     }
 
+    public async Task<RoutePlanVersionDto> CreateRouteChangeProposalAsync(Guid tripId, Guid actorUserId, CreateRouteChangeRequestInput input, Guid? correlationId = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(input.Reason) || input.Reason.Trim().Length > 2000)
+            throw new BusinessRuleException("A route-change reason of at most 2000 characters is required.", "ROUTE_CHANGE_REASON_REQUIRED", "reason");
+        if (input.DelayEstimateMinutes < 0)
+            throw new BusinessRuleException("Delay estimate cannot be negative.", "INVALID_DELAY_ESTIMATE", "delayEstimateMinutes");
+        if (input.AdditionalCost < 0)
+            throw new BusinessRuleException("Additional cost cannot be negative.", "INVALID_ADDITIONAL_COST", "additionalCost");
+        if (string.IsNullOrWhiteSpace(input.CurrencyCode) || input.CurrencyCode.Trim().Length != 3)
+            throw new BusinessRuleException("CurrencyCode must be a three-letter currency code.", "INVALID_CURRENCY_CODE", "currencyCode");
+
+        var plan = await db.RoutePlans.SingleOrDefaultAsync(x => x.TripId == tripId, ct)
+            ?? throw new BusinessRuleException("Create a route plan before proposing an emergency change.", "ROUTE_PLAN_REQUIRED", "tripId");
+        var active = await db.RoutePlanVersions.AnyAsync(x => x.Id == plan.ActiveVersionId && x.Status == PlanningConstants.RouteVersionStatus.Active, ct);
+        if (!active)
+            throw new BusinessRuleException("An active route version is required before proposing an emergency change.", "ACTIVE_ROUTE_REQUIRED", "tripId");
+
+        var reason = $"Emergency route change: {input.Reason.Trim()}";
+        var proposal = await CreateNewVersionAsync(plan.Id, actorUserId, reason, ct);
+        var version = await db.RoutePlanVersions.SingleAsync(x => x.Id == proposal.Id, ct);
+        version.EstimatedDurationMinutes = input.DelayEstimateMinutes;
+        version.AdditionalCost = input.AdditionalCost;
+        version.CurrencyCode = input.CurrencyCode.Trim().ToUpperInvariant();
+        var now = DateTime.UtcNow;
+        db.AuditLogs.Add(new AuditLog
+        {
+            EntityType = "RoutePlanVersion",
+            EntityId = version.Id,
+            Action = "ROUTE_CHANGE_PROPOSED",
+            OldState = PlanningConstants.RouteVersionStatus.Active,
+            NewState = PlanningConstants.RouteVersionStatus.Draft,
+            ActorUserId = actorUserId,
+            Reason = reason,
+            CorrelationId = correlationId,
+            OccurredAt = now
+        });
+        await db.SaveChangesAsync(ct);
+        return MapVersion(version);
+    }
+
     // ==========================================
     // Route Legs
     // ==========================================
@@ -637,7 +677,42 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
         version.Status = PlanningConstants.RouteVersionStatus.Approved;
         version.ApprovedByUserId = actorUserId;
         version.ApprovedAt = DateTime.UtcNow;
+        db.AuditLogs.Add(new AuditLog
+        {
+            EntityType = "RoutePlanVersion",
+            EntityId = version.Id,
+            Action = "APPROVE",
+            OldState = PlanningConstants.RouteVersionStatus.PendingApproval,
+            NewState = PlanningConstants.RouteVersionStatus.Approved,
+            ActorUserId = actorUserId,
+            OccurredAt = DateTime.UtcNow
+        });
 
+        await db.SaveChangesAsync(ct);
+        return MapVersion(version);
+    }
+
+    public async Task<RoutePlanVersionDto> RejectRouteVersionAsync(Guid versionId, Guid actorUserId, string reason, Guid? correlationId = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length > 2000)
+            throw new BusinessRuleException("A rejection reason of at most 2000 characters is required.", "REJECTION_REASON_REQUIRED", "reason");
+        var version = await db.RoutePlanVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
+            ?? throw new NotFoundException("RoutePlanVersion", versionId);
+        if (version.Status != PlanningConstants.RouteVersionStatus.PendingApproval)
+            throw new BusinessRuleException("Only a PENDING_APPROVAL route change can be rejected.", "INVALID_VERSION_TRANSITION");
+        version.Status = PlanningConstants.RouteVersionStatus.Rejected;
+        db.AuditLogs.Add(new AuditLog
+        {
+            EntityType = "RoutePlanVersion",
+            EntityId = version.Id,
+            Action = "ROUTE_CHANGE_REJECTED",
+            OldState = PlanningConstants.RouteVersionStatus.PendingApproval,
+            NewState = PlanningConstants.RouteVersionStatus.Rejected,
+            ActorUserId = actorUserId,
+            Reason = reason.Trim(),
+            CorrelationId = correlationId,
+            OccurredAt = DateTime.UtcNow
+        });
         await db.SaveChangesAsync(ct);
         return MapVersion(version);
     }
@@ -684,18 +759,23 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
             OccurredAt = DateTime.UtcNow
         });
 
+        var isRouteChange = version.Reason?.StartsWith("Emergency route change:", StringComparison.Ordinal) == true;
         // Outbox Event
         var payload = JsonSerializer.Serialize(new
         {
             tripId = plan.TripId,
             routePlanId = plan.Id,
             routePlanVersionId = version.Id,
-            versionNo = version.VersionNo
+            versionNo = version.VersionNo,
+            delayEstimateMinutes = isRouteChange ? version.EstimatedDurationMinutes : null,
+            additionalCost = isRouteChange ? version.AdditionalCost : 0,
+            currencyCode = isRouteChange ? version.CurrencyCode : null,
+            reason = isRouteChange ? version.Reason : null
         });
 
         db.OutboxMessages.Add(new OutboxMessage
         {
-            EventType = "Planning.RouteActivated",
+            EventType = isRouteChange ? "Planning.RouteChangeApplied" : "Planning.RouteActivated",
             AggregateType = "RoutePlanVersion",
             AggregateId = version.Id,
             Payload = payload,

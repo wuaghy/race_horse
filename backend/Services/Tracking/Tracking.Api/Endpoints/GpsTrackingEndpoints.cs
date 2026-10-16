@@ -13,22 +13,27 @@ public static class GpsTrackingEndpoints
             .RequireAuthorization();
 
         gps.MapPost("/points", IngestGpsPoint)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("IngestGpsPoint")
             .WithOpenApi();
 
         gps.MapGet("/points", GetGpsPoints)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetGpsPoints")
             .WithOpenApi();
 
         gps.MapGet("/points/latest", GetLatestGpsPoint)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetLatestGpsPoint")
             .WithOpenApi();
 
         gps.MapGet("/locations", GetLocationHistory)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetLocationHistory")
             .WithOpenApi();
 
         gps.MapPost("/locations", RecordLocationHistory)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("RecordLocationHistory")
             .WithOpenApi();
 
@@ -37,10 +42,12 @@ public static class GpsTrackingEndpoints
             .RequireAuthorization();
 
         eta.MapPost("/calculate", CalculateEta)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("CalculateEta")
             .WithOpenApi();
 
         eta.MapGet("/current", GetCurrentEta)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetCurrentEta")
             .WithOpenApi();
     }

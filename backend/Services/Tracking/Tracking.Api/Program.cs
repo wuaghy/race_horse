@@ -3,6 +3,7 @@ using BuildingBlocks.Middleware;
 using Tracking.Api.Endpoints;
 using Tracking.Application.Services;
 using Tracking.Infrastructure.Repositories;
+using Tracking.Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -55,7 +56,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             RoleClaimType = "role"
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("TrackingRead", policy => policy.RequireRole(
+        "CUSTOMER", "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("TrackingUpdate", policy => policy.RequireRole(
+        "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+});
 
 // Register Trip Execution services
 builder.Services.AddScoped<ITripExecutionService, TripExecutionService>();
@@ -74,6 +81,10 @@ builder.Services.AddScoped<IHorseHealthService, HorseHealthService>();
 builder.Services.AddScoped<IHealthLogRepository, InMemoryHealthLogRepository>();
 builder.Services.AddScoped<IHealthAlertRepository, InMemoryHealthAlertRepository>();
 builder.Services.AddScoped<IHealthStatusRepository, InMemoryHealthStatusRepository>();
+builder.Services.Configure<RabbitMqOptions>(builder.Configuration.GetSection(RabbitMqOptions.SectionName));
+builder.Services.AddSingleton<TrackingMessageBus>();
+builder.Services.AddSingleton<ITrackingMessageBus>(sp => sp.GetRequiredService<TrackingMessageBus>());
+builder.Services.AddHostedService<TrackingOutboxDispatcher>();
 
 var app = builder.Build();
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();

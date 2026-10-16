@@ -7,7 +7,7 @@ public interface ITripExecutionService
 {
     Task<TripExecutionDto> InitiateTripExecutionAsync(InitiateTripExecutionInput input, CancellationToken cancellationToken);
     Task<TripExecutionDto?> GetTripExecutionAsync(Guid tripId, CancellationToken cancellationToken);
-    Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, CancellationToken cancellationToken);
+    Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, Guid actorUserId, CancellationToken cancellationToken);
     Task<TripExecutionDto> RecordTripArrivalAsync(Guid tripId, decimal latitude, decimal longitude, CancellationToken cancellationToken);
     Task<TripExecutionDto> UpdateTripLocationAsync(Guid tripId, UpdateTripLocationInput input, CancellationToken cancellationToken);
     Task<CheckpointEventDto> RecordCheckpointEventAsync(Guid tripId, RecordCheckpointEventInput input, CancellationToken cancellationToken);
@@ -52,7 +52,7 @@ public class TripExecutionService : ITripExecutionService
         return trip == null ? null : MapToDto(trip);
     }
 
-    public async Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, CancellationToken cancellationToken)
+    public async Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, Guid actorUserId, CancellationToken cancellationToken)
     {
         var trip = await _tripRepository.GetByTripIdAsync(tripId, cancellationToken)
             ?? throw new InvalidOperationException($"Trip {tripId} not found");
@@ -77,10 +77,11 @@ public class TripExecutionService : ITripExecutionService
             {
                 TripId = trip.TripId,
                 TripNo = trip.TripNo,
+                DepartedByUserId = actorUserId,
                 DepartedAt = trip.DepartureAt,
                 Latitude = latitude,
                 Longitude = longitude
-            }),
+            }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             CorrelationId = Guid.NewGuid(),
             OccurredAt = DateTime.UtcNow,
             Status = "PENDING"
@@ -119,7 +120,7 @@ public class TripExecutionService : ITripExecutionService
                 ArrivedAt = trip.ArrivalAt,
                 Latitude = latitude,
                 Longitude = longitude
-            }),
+            }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             CorrelationId = Guid.NewGuid(),
             OccurredAt = DateTime.UtcNow,
             Status = "PENDING"
@@ -201,7 +202,7 @@ public class TripExecutionService : ITripExecutionService
                 Latitude = input.Latitude,
                 Longitude = input.Longitude,
                 Notes = input.Notes
-            }),
+            }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             CorrelationId = Guid.NewGuid(),
             OccurredAt = DateTime.UtcNow,
             Status = "PENDING"

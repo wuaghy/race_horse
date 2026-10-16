@@ -158,6 +158,11 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
 
     public async Task<HorseRecord> UpdateHorseAsync(Guid identityUserId, Guid horseId, HorseInput input, CancellationToken cancellationToken)
     {
+        if (input.VersionNo is null)
+        {
+            throw new BusinessRuleException("Version number is required when updating a horse.", "VERSION_REQUIRED", "versionNo");
+        }
+
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = new SqlCommand(
