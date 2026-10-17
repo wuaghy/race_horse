@@ -40,6 +40,7 @@ Quá trình khởi tạo sẽ tự động:
 - Khởi chạy MinIO (API: `9000`, Web Console: `http://localhost:9001`) và tạo sẵn 4 buckets: `documents`, `health-images`, `incident-attachments`, `signatures`.
 - Build và chạy 8 microservices cùng API Gateway tại `http://localhost:8080`.
 - Mở cổng HTTP/2 nội bộ `8081` của Planning Service cho gRPC; cổng này chỉ dùng trong Docker network.
+- Cung cấp Swagger Hub tại `http://localhost:8080/swagger`, có menu chọn API Gateway và cả 8 microservices.
 
 ### Bước 2: Build Solution .NET
 ```bash

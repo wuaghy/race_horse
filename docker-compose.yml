@@ -275,6 +275,7 @@ services:
       - "${GATEWAY_PORT:-8080}:8080"
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_ENVIRONMENT: Development
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
