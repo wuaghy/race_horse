@@ -16,6 +16,26 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
             ?? throw new InvalidOperationException("ConnectionStrings:BookingDb must be configured.");
     }
 
+    public async Task ProvisionProfileAsync(Guid identityUserId, string email, string fullName, string? phone, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        await using var command = new SqlCommand(
+            "IF NOT EXISTS (SELECT 1 FROM dbo.Customers WITH (UPDLOCK, HOLDLOCK) WHERE IdentityUserId = @IdentityUserId) " +
+            "INSERT INTO dbo.Customers (CustomerCode, IdentityUserId, Name, CustomerType, ContactPerson, Phone, Email, Status) " +
+            "VALUES (@CustomerCode, @IdentityUserId, @Name, 'INDIVIDUAL_OWNER', @Name, @Phone, @Email, 'ACTIVE');",
+            connection,
+            transaction);
+        command.Parameters.Add("@IdentityUserId", SqlDbType.UniqueIdentifier).Value = identityUserId;
+        command.Parameters.Add("@CustomerCode", SqlDbType.VarChar, 50).Value = "CUS-" + Guid.NewGuid().ToString("N")[..12].ToUpperInvariant();
+        command.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = fullName.Trim();
+        command.Parameters.Add("@Phone", SqlDbType.VarChar, 50).Value = (object?)phone ?? DBNull.Value;
+        command.Parameters.Add("@Email", SqlDbType.VarChar, 255).Value = email.Trim().ToLowerInvariant();
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task<CustomerProfile?> GetProfileAsync(Guid identityUserId, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(_connectionString);

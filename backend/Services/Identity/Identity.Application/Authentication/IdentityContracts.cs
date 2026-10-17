@@ -44,6 +44,11 @@ public interface IIdentityTokenService
     string HashRefreshToken(string token);
 }
 
+public interface ICustomerProfileProvisioner
+{
+    Task ProvisionAsync(Guid identityUserId, string email, string fullName, string? phone, CancellationToken cancellationToken);
+}
+
 public interface IIdentityAuthService
 {
     Task<AuthSessionResult> RegisterCustomerAsync(RegisterCustomerCommand command, CancellationToken cancellationToken);
@@ -78,6 +83,8 @@ public interface IIdentityStore
         DateTimeOffset refreshTokenExpiresAt,
         string? deviceInfo,
         CancellationToken cancellationToken);
+
+    Task DeleteNewCustomerAsync(Guid userId, CancellationToken cancellationToken);
 
     Task AddRefreshTokenAsync(
         Guid userId,

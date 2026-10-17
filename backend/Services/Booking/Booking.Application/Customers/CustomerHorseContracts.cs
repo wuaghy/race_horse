@@ -55,6 +55,8 @@ public sealed record HorseInput(
 
 public interface ICustomerHorseService
 {
+    Task ProvisionProfileAsync(Guid identityUserId, string email, string fullName, string? phone, CancellationToken cancellationToken);
+
     Task<CustomerProfile?> GetProfileAsync(Guid identityUserId, CancellationToken cancellationToken);
 
     Task<CustomerProfile> SaveProfileAsync(

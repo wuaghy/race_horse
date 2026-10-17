@@ -5,6 +5,7 @@ using Identity.Api.Dashboard;
 using Identity.Application;
 using Identity.Infrastructure;
 using Identity.Infrastructure.Authentication;
+using Contracts.Grpc.CustomerProfile;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -31,6 +32,11 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 builder.Services.AddValidation();
+builder.Services.AddGrpcClient<CustomerProfileProvisioning.CustomerProfileProvisioningClient>(options =>
+{
+    options.Address = new Uri(builder.Configuration["BookingGrpc:Address"] ?? "http://localhost:8082");
+});
+builder.Services.AddScoped<Identity.Application.Authentication.ICustomerProfileProvisioner, BookingCustomerProfileProvisioner>();
 
 var jwtSettings = JwtSettings.FromConfiguration(builder.Configuration);
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SigningKey));

@@ -2,6 +2,7 @@ using BuildingBlocks.Api;
 using BuildingBlocks.Middleware;
 using Booking.Api.Customers;
 using Booking.Api.Dashboard;
+using Booking.Api.Grpc;
 using Booking.Api.TransportRequests;
 using Booking.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -10,6 +11,7 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddGrpc();
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -97,5 +99,6 @@ app.MapGet("/health", (HttpContext context) =>
 app.MapCustomerHorseEndpoints();
 app.MapTransportRequestEndpoints();
 app.MapBookingDashboardEndpoints();
+app.MapGrpcService<CustomerProfileProvisioningGrpcService>();
 
 app.Run();

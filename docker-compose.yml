@@ -44,9 +44,12 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
+      booking-api:
+        condition: service_started
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
       ASPNETCORE_ENVIRONMENT: Development
+      BookingGrpc__Address: http://booking-api:8081
       DemoData__Enabled: ${SEED_DEMO_DATA:-false}
       DemoData__Password: ${DEMO_DATA_PASSWORD:-}
       ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=IdentityDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
@@ -71,7 +74,10 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      ASPNETCORE_HTTP_PORTS: "8080"
+      Kestrel__Endpoints__Http__Url: http://+:8080
+      Kestrel__Endpoints__Http__Protocols: Http1
+      Kestrel__Endpoints__Grpc__Url: http://+:8081
+      Kestrel__Endpoints__Grpc__Protocols: Http2
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__BookingDb: "Server=sqlserver,1433;Database=BookingDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option csharp_namespace = "Contracts.Grpc.CustomerProfile";
+package racehorse.customerprofile.v1;
+
+import "google/protobuf/empty.proto";
+
+service CustomerProfileProvisioning {
+  rpc ProvisionCustomer (ProvisionCustomerRequest) returns (google.protobuf.Empty);
+}
+
+message ProvisionCustomerRequest {
+  string identity_user_id = 1;
+  string email = 2;
+  string full_name = 3;
+  string phone = 4;
+}

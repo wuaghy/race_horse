@@ -144,6 +144,41 @@ public sealed class SqlIdentityStore : IIdentityStore
         await InsertRefreshTokenAsync(connection, null, userId, tokenHash, expiresAt, deviceInfo, cancellationToken);
     }
 
+    public async Task DeleteNewCustomerAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using (var deleteTokens = new SqlCommand(
+                "DELETE FROM dbo.RefreshTokens WHERE UserId = @UserId;",
+                connection,
+                transaction))
+            {
+                deleteTokens.Parameters.Add("@UserId", SqlDbType.UniqueIdentifier).Value = userId;
+                await deleteTokens.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var deleteUser = new SqlCommand(
+                "DELETE u FROM dbo.Users u INNER JOIN dbo.Roles r ON r.Id = u.RoleId " +
+                "WHERE u.Id = @UserId AND r.Code = 'CUSTOMER';",
+                connection,
+                transaction))
+            {
+                deleteUser.Parameters.Add("@UserId", SqlDbType.UniqueIdentifier).Value = userId;
+                await deleteUser.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
     public async Task<AuthUser?> RotateRefreshTokenAsync(
         string currentTokenHash,
         string replacementTokenHash,
