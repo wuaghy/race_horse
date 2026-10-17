@@ -11,7 +11,7 @@ Hệ thống Quản lý Vận chuyển Ngựa đua Xuyên Quốc gia (PRN232 - M
 - **Internal RPC**: gRPC/Protobuf (Tracking truy vấn Planning trip summary qua HTTP/2)
 - **Database**: SQL Server (Database-per-service: 8 cơ sở dữ liệu riêng biệt)
 - **Object Storage**: S3-compatible (MinIO / AWS S3)
-- **Client**: React Native (TypeScript)
+- **Web client**: React 19 + TypeScript + Vite (thư mục `../../FE/horse_race`)
 
 ## 2. Ranh giới Microservices
 
@@ -28,15 +28,16 @@ Hệ thống được module hóa thành 8 microservices độc lập:
 
 ## 3. Khởi chạy nhanh (Local Development)
 
-### Bước 1: Khởi động Hạ tầng Docker (SQL Server, RabbitMQ, MinIO)
+### Bước 1: Khởi động toàn bộ backend bằng Docker
 ```bash
-# Bật các container hạ tầng
 docker compose up -d
 ```
 Quá trình khởi tạo sẽ tự động:
 - Khởi chạy SQL Server 2022 và tự động chạy script tạo đủ 8 database cùng schema DDL.
 - Khởi chạy RabbitMQ (Cổng AMQP: `5672`, Management UI: `http://localhost:15672`).
 - Khởi chạy MinIO (API: `9000`, Web Console: `http://localhost:9001`) và tạo sẵn 4 buckets: `documents`, `health-images`, `incident-attachments`, `signatures`.
+- Build và chạy 8 microservices cùng API Gateway tại `http://localhost:8080`.
+- Mở cổng HTTP/2 nội bộ `8081` của Planning Service cho gRPC; cổng này chỉ dùng trong Docker network.
 
 ### Bước 2: Build Solution .NET
 ```bash
@@ -44,7 +45,37 @@ Quá trình khởi tạo sẽ tự động:
 dotnet build RacehorseTransport.sln
 ```
 
-## 4. Cấu trúc thư mục
+### Bước 3: Kiểm tra nhanh
+
+```bash
+docker compose ps
+curl http://localhost:8080/health
+dotnet test RacehorseTransport.sln --configuration Release
+```
+
+Web frontend chạy riêng từ `FE/horse_race` bằng `npm run dev`, mặc định tại `http://localhost:5173`.
+
+## 4. API truy vấn danh sách
+
+Các danh sách Booking hỗ trợ lọc ở backend trước khi phân trang:
+
+```http
+GET /api/v1/horses?page=0&pageSize=10&search=horse&status=ACTIVE
+GET /api/v1/transport-requests?page=0&pageSize=10&search=REQ&status=SUBMITTED
+GET /api/v1/manager/transport-requests?page=0&pageSize=10&search=REQ&status=UNDER_REVIEW
+```
+
+`search`, `status`, `page` và `pageSize` là query parameters; kết quả trả theo response envelope có metadata phân trang.
+
+Luồng gRPC có thể kiểm tra qua Gateway sau khi có trip:
+
+```http
+GET /api/v1/trips/{tripId}/planning-summary
+```
+
+Tracking Service gọi Planning Service bằng gRPC và trả `source: "planning-grpc"` trong response.
+
+## 5. Cấu trúc thư mục
 
 ```text
 ├── Docs/                              # Tài liệu phân tích nghiệp vụ, ERD và DBML
@@ -61,6 +92,6 @@ dotnet build RacehorseTransport.sln
 └── RacehorseTransport.sln
 ```
 
-## 5. Assessment evidence
+## 6. Assessment evidence
 
 Đối chiếu code, cấu hình và kịch bản demo theo từng tiêu chí chấm điểm tại [`Docs/ASSESSMENT_EVIDENCE.md`](Docs/ASSESSMENT_EVIDENCE.md).
