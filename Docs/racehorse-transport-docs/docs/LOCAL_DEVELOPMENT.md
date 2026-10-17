@@ -11,18 +11,28 @@
 
 ## 2. Start infrastructure
 
-Set a local JWT signing key in the environment before starting the application containers. Do not commit the key:
+Copy `.env.example` to `.env`, then set local SQL Server, RabbitMQ, MinIO, and optional demo-account credentials. Generate the JWT signing key separately. Never commit `.env` or any generated key.
 
 PowerShell:
 
 ```powershell
 $env:JWT_SIGNING_KEY = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+$env:MSSQL_SA_PASSWORD = '<set-a-strong-local-sql-password>'
+$env:RABBITMQ_DEFAULT_USER = '<set-a-local-rabbitmq-user>'
+$env:RABBITMQ_DEFAULT_PASS = '<set-a-strong-local-rabbitmq-password>'
+$env:MINIO_ROOT_USER = '<set-a-local-minio-user>'
+$env:MINIO_ROOT_PASSWORD = '<set-a-strong-local-minio-password>'
 ```
 
 Bash:
 
 ```bash
 export JWT_SIGNING_KEY="$(openssl rand -base64 48)"
+export MSSQL_SA_PASSWORD='<set-a-strong-local-sql-password>'
+export RABBITMQ_DEFAULT_USER='<set-a-local-rabbitmq-user>'
+export RABBITMQ_DEFAULT_PASS='<set-a-strong-local-rabbitmq-password>'
+export MINIO_ROOT_USER='<set-a-local-minio-user>'
+export MINIO_ROOT_PASSWORD='<set-a-strong-local-minio-password>'
 ```
 
 ```bash

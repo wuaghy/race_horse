@@ -8,11 +8,11 @@ services:
       - "${MSSQL_PORT:-1433}:1433"
     environment:
       - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!}
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:?Copy .env.example to .env and set MSSQL_SA_PASSWORD}
     volumes:
       - sqlserver_data:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"${MSSQL_SA_PASSWORD:-YourStrong@Password2026!}\" -C -Q \"SELECT 1\" || exit 1"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD}\" -C -Q \"SELECT 1\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -27,7 +27,7 @@ services:
       sqlserver:
         condition: service_healthy
     environment:
-      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!}
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD}
       - SEED_DEMO_DATA=${SEED_DEMO_DATA:-false}
     volumes:
       - ./scripts/init-sql:/scripts
@@ -48,8 +48,8 @@ services:
       ASPNETCORE_HTTP_PORTS: "8080"
       ASPNETCORE_ENVIRONMENT: Development
       DemoData__Enabled: ${SEED_DEMO_DATA:-false}
-      DemoData__Password: ${DEMO_DATA_PASSWORD:-HorseDev2026!}
-      ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=IdentityDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      DemoData__Password: ${DEMO_DATA_PASSWORD:-}
+      ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=IdentityDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
@@ -73,14 +73,14 @@ services:
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__BookingDb: "Server=sqlserver,1433;Database=BookingDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      ConnectionStrings__BookingDb: "Server=sqlserver,1433;Database=BookingDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
       RabbitMQ__Enabled: "true"
-      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
-      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
     ports:
       - "${BOOKING_PORT:-8082}:8080"
     networks:
@@ -99,13 +99,13 @@ services:
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__ComplianceDb: "Server=sqlserver,1433;Database=ComplianceDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      ConnectionStrings__ComplianceDb: "Server=sqlserver,1433;Database=ComplianceDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
-      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
-      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
       Storage__LocalDirectory: /app/App_Data/compliance-files
     ports:
       - "${COMPLIANCE_PORT:-8083}:8080"
@@ -130,14 +130,14 @@ services:
       Kestrel__Endpoints__Grpc__Url: http://+:8081
       Kestrel__Endpoints__Grpc__Protocols: Http2
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__PlanningDb: "Server=sqlserver,1433;Database=PlanningDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      ConnectionStrings__PlanningDb: "Server=sqlserver,1433;Database=PlanningDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
       RabbitMQ__Enabled: "true"
-      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
-      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
       RabbitMQ__ExchangeName: racehorse.events
     expose:
       - "8081"
@@ -162,8 +162,8 @@ services:
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
       RabbitMQ__Enabled: "true"
-      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
-      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
       RabbitMQ__ExchangeName: racehorse.events
       PlanningGrpc__Address: http://planning-api:8081
     ports:
@@ -184,13 +184,13 @@ services:
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__HandoverDb: "Server=sqlserver,1433;Database=HandoverDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      ConnectionStrings__HandoverDb: "Server=sqlserver,1433;Database=HandoverDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
-      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
-      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
       RabbitMQ__ExchangeName: racehorse.events
       Storage__HandoverDirectory: /app/App_Data/handover-files
     ports:
@@ -213,14 +213,14 @@ services:
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__IncidentDb: "Server=sqlserver,1433;Database=IncidentDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      ConnectionStrings__IncidentDb: "Server=sqlserver,1433;Database=IncidentDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
       RabbitMQ__Enabled: "true"
-      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
-      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
       RabbitMQ__ExchangeName: racehorse.events
       Storage__LocalDirectory: /app/App_Data/incident-files
     ports:
@@ -243,14 +243,14 @@ services:
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__NotificationDb: "Server=sqlserver,1433;Database=NotificationDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
+      ConnectionStrings__NotificationDb: "Server=sqlserver,1433;Database=NotificationDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
       RabbitMQ__Enabled: "true"
-      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
-      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
+      RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
       RabbitMQ__ExchangeName: racehorse.events
     ports:
       - "${NOTIFICATION_PORT:-8087}:8080"
@@ -298,8 +298,8 @@ services:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MGMT_PORT:-15672}:15672"
     environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-guest}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:-guest}
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -319,8 +319,8 @@ services:
       - "${MINIO_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/bitnami/minio/data
     healthcheck:
@@ -341,7 +341,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: >
       set -e;
-      mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+      mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD};
       mc mb --ignore-existing myminio/documents;
       mc mb --ignore-existing myminio/health-images;
       mc mb --ignore-existing myminio/incident-attachments;
