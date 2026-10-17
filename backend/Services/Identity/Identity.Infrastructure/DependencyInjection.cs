@@ -1,5 +1,7 @@
 using Identity.Application.Authentication;
 using Identity.Infrastructure.Authentication;
+using Identity.Application.Dashboard;
+using Identity.Infrastructure.Dashboard;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,6 +17,7 @@ public static class DependencyInjection
         services.AddSingleton<PasswordHasher<AuthUser>>();
         services.AddSingleton<IPasswordHashService, AspNetPasswordHashService>();
         services.AddScoped<IIdentityStore, SqlIdentityStore>();
+        services.AddScoped<IIdentityDashboardService, SqlIdentityDashboardService>();
         return services;
     }
 }

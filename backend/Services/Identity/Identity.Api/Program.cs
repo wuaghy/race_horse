@@ -1,6 +1,7 @@
 using BuildingBlocks.Api;
 using BuildingBlocks.Middleware;
 using Identity.Api.Authentication;
+using Identity.Api.Dashboard;
 using Identity.Application;
 using Identity.Infrastructure;
 using Identity.Infrastructure.Authentication;
@@ -54,7 +55,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             RoleClaimType = "role"
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("LogisticsManager", policy => policy.RequireRole("LOGISTICS_MANAGER", "ADMIN"));
+});
 
 var app = builder.Build();
 
@@ -87,5 +91,6 @@ app.MapGet("/health", (HttpContext context) =>
 .WithName("GetIdentityHealth");
 
 app.MapAuthEndpoints();
+app.MapIdentityDashboardEndpoints();
 
 app.Run();

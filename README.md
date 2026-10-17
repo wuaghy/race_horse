@@ -77,6 +77,17 @@ GET /api/v1/trips/{tripId}/planning-summary
 
 Tracking Service gọi Planning Service bằng gRPC và trả `source: "planning-grpc"` trong response.
 
+Dashboard của Logistics Manager tổng hợp dữ liệu thật qua Gateway:
+
+```http
+GET /api/v1/manager/dashboard/booking
+GET /api/v1/manager/dashboard/identity
+GET /api/v1/handovers/dashboard
+GET /api/v1/incidents?pageNumber=1&pageSize=50
+```
+
+Booking cung cấp tổng khách hàng, ngựa, yêu cầu và đơn vận chuyển. Identity cung cấp tài khoản hoạt động cùng số phiên truy cập 30 ngày; Handover cung cấp doanh thu, chi phí và số bàn giao hoàn tất.
+
 ## 5. Cấu trúc thư mục
 
 ```text

@@ -1,6 +1,7 @@
 using BuildingBlocks.Api;
 using BuildingBlocks.Middleware;
 using Booking.Api.Customers;
+using Booking.Api.Dashboard;
 using Booking.Api.TransportRequests;
 using Booking.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -95,5 +96,6 @@ app.MapGet("/health", (HttpContext context) =>
 
 app.MapCustomerHorseEndpoints();
 app.MapTransportRequestEndpoints();
+app.MapBookingDashboardEndpoints();
 
 app.Run();
