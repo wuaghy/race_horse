@@ -19,15 +19,17 @@ public sealed class SqlTransportRequestService : ITransportRequestService
             ?? throw new InvalidOperationException("ConnectionStrings:BookingDb must be configured.");
     }
 
-    public async Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, string? search, CancellationToken cancellationToken)
+    public async Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, string? search, string? status, CancellationToken cancellationToken)
     {
         ValidatePage(page, pageSize);
         search = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        status = string.IsNullOrWhiteSpace(status) ? null : status.Trim().ToUpperInvariant();
         await using var connection = await OpenConnectionAsync(cancellationToken);
-        const string ownerFilter = "FROM dbo.TransportRequests r INNER JOIN dbo.Customers c ON c.Id = r.CustomerId WHERE c.IdentityUserId = @IdentityUserId AND (@Search IS NULL OR r.RequestNo LIKE '%' + @Search + '%' OR r.Status LIKE '%' + @Search + '%')";
+        const string ownerFilter = "FROM dbo.TransportRequests r INNER JOIN dbo.Customers c ON c.Id = r.CustomerId WHERE c.IdentityUserId = @IdentityUserId AND (@Search IS NULL OR r.RequestNo LIKE '%' + @Search + '%') AND (@Status IS NULL OR r.Status = @Status)";
         await using var countCommand = new SqlCommand("SELECT COUNT_BIG(*) " + ownerFilter + ";", connection);
         countCommand.Parameters.Add("@IdentityUserId", SqlDbType.UniqueIdentifier).Value = identityUserId;
         countCommand.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
+        countCommand.Parameters.Add("@Status", SqlDbType.VarChar, 30).Value = (object?)status ?? DBNull.Value;
         var total = (long)(await countCommand.ExecuteScalarAsync(cancellationToken) ?? 0L);
 
         await using var command = new SqlCommand(
@@ -37,6 +39,7 @@ public sealed class SqlTransportRequestService : ITransportRequestService
             connection);
         command.Parameters.Add("@IdentityUserId", SqlDbType.UniqueIdentifier).Value = identityUserId;
         command.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
+        command.Parameters.Add("@Status", SqlDbType.VarChar, 30).Value = (object?)status ?? DBNull.Value;
         AddPaging(command, page, pageSize);
         return new PageResult<TransportRequestListItem>(await ReadListAsync(command, cancellationToken), page, pageSize, total);
     }
@@ -173,14 +176,19 @@ public sealed class SqlTransportRequestService : ITransportRequestService
         }
     }
 
-    public async Task<PageResult<TransportRequestListItem>> GetManagerQueueAsync(Guid managerUserId, int page, int pageSize, CancellationToken cancellationToken)
+    public async Task<PageResult<TransportRequestListItem>> GetManagerQueueAsync(Guid managerUserId, int page, int pageSize, string? search, string? status, CancellationToken cancellationToken)
     {
         ValidatePage(page, pageSize);
+        search = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        status = string.IsNullOrWhiteSpace(status) ? null : status.Trim().ToUpperInvariant();
         await using var connection = await OpenConnectionAsync(cancellationToken);
         const string filter = "FROM dbo.TransportRequests r WHERE r.Status IN ('SUBMITTED','UNDER_REVIEW') " +
-            "AND (r.AssignedManagerUserId IS NULL OR r.AssignedManagerUserId = @ManagerId)";
+            "AND (r.AssignedManagerUserId IS NULL OR r.AssignedManagerUserId = @ManagerId) " +
+            "AND (@Search IS NULL OR r.RequestNo LIKE '%' + @Search + '%') AND (@Status IS NULL OR r.Status = @Status)";
         await using var countCommand = new SqlCommand("SELECT COUNT_BIG(*) " + filter + ";", connection);
         countCommand.Parameters.Add("@ManagerId", SqlDbType.UniqueIdentifier).Value = managerUserId;
+        countCommand.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
+        countCommand.Parameters.Add("@Status", SqlDbType.VarChar, 30).Value = (object?)status ?? DBNull.Value;
         var total = (long)(await countCommand.ExecuteScalarAsync(cancellationToken) ?? 0L);
         await using var command = new SqlCommand(
             "SELECT r.Id, r.RequestNo, r.Status, r.RequestedDepartureAt, r.CreatedAt, " +
@@ -188,6 +196,8 @@ public sealed class SqlTransportRequestService : ITransportRequestService
             filter + " ORDER BY r.SubmittedAt, r.CreatedAt OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;",
             connection);
         command.Parameters.Add("@ManagerId", SqlDbType.UniqueIdentifier).Value = managerUserId;
+        command.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
+        command.Parameters.Add("@Status", SqlDbType.VarChar, 30).Value = (object?)status ?? DBNull.Value;
         AddPaging(command, page, pageSize);
         return new PageResult<TransportRequestListItem>(await ReadListAsync(command, cancellationToken), page, pageSize, total);
     }

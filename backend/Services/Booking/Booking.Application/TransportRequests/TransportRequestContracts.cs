@@ -46,7 +46,7 @@ public sealed record ManagerDecisionInput(string? Reason);
 
 public interface ITransportRequestService
 {
-    Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, string? search, CancellationToken cancellationToken);
+    Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, string? search, string? status, CancellationToken cancellationToken);
 
     Task<TransportRequestRecord?> GetCustomerRequestAsync(Guid identityUserId, Guid requestId, CancellationToken cancellationToken);
 
@@ -58,7 +58,7 @@ public interface ITransportRequestService
 
     Task<TransportRequestRecord> SubmitAsync(Guid identityUserId, Guid requestId, Guid correlationId, CancellationToken cancellationToken);
 
-    Task<PageResult<TransportRequestListItem>> GetManagerQueueAsync(Guid managerUserId, int page, int pageSize, CancellationToken cancellationToken);
+    Task<PageResult<TransportRequestListItem>> GetManagerQueueAsync(Guid managerUserId, int page, int pageSize, string? search, string? status, CancellationToken cancellationToken);
 
     Task<TransportRequestRecord> StartReviewAsync(Guid managerUserId, Guid requestId, Guid correlationId, CancellationToken cancellationToken);
 
