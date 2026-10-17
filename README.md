@@ -30,6 +30,8 @@ Hệ thống được module hóa thành 8 microservices độc lập:
 
 ### Bước 1: Khởi động toàn bộ backend bằng Docker
 ```bash
+cp .env.example .env
+# Thay JWT_SIGNING_KEY và các mật khẩu mẫu trong .env trước khi dùng ngoài local.
 docker compose up -d
 ```
 Quá trình khởi tạo sẽ tự động:

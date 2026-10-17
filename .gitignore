@@ -32,6 +32,11 @@ bld/
 TestResults/
 *.trx
 coverage/
+.coverage
+.coverage.*
+coverage.*
+lcov.info
+BenchmarkDotNet.Artifacts/
 
 # OS generated files
 .DS_Store
@@ -40,13 +45,23 @@ ehthumbs.db
 
 # Environment variables & secrets
 .env
-.env.local
-.env.example
+.env.*
+!.env.example
 *.local.json
 appsettings.*.local.json
+secrets.json
+**/secrets.json
+*.pfx
+*.p12
+*.pem
+*.key
+*.snk
+*.jks
+*.keystore
 
 # Docker
 docker-compose.override.yml
+.docker/
 
 # Node & React Native
 node_modules/
@@ -57,6 +72,23 @@ yarn-error.log*
 .expo-shared/
 dist/
 web-build/
+
+# .NET packaging and publish artifacts
+[Aa]rtifacts/
+[Pp]ublish/
+packages/
+*.nupkg
+*.snupkg
+
+# Local databases, diagnostics, and temporary files
+*.db
+*.db-shm
+*.db-wal
+*.dmp
+*.tmp
+*.bak
+*.swp
+*~
 
 # SQL Server data volumes
 data/sqlserver/
