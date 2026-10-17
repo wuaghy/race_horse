@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+option csharp_namespace = "Contracts.Grpc.Planning";
+package racehorse.planning.v1;
+
+service PlanningQuery {
+  rpc GetTripSummary (GetTripSummaryRequest) returns (TripSummaryReply);
+}
+
+message GetTripSummaryRequest {
+  string trip_id = 1;
+}
+
+message TripSummaryReply {
+  string trip_id = 1;
+  string trip_no = 2;
+  string order_id = 3;
+  string status = 4;
+  bool compliance_ready = 5;
+  string planned_departure_at = 6;
+  string planned_arrival_at = 7;
+  int32 delay_minutes = 8;
+  int32 version_no = 9;
+}

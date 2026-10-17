@@ -125,7 +125,10 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      ASPNETCORE_HTTP_PORTS: "8080"
+      Kestrel__Endpoints__Http__Url: http://+:8080
+      Kestrel__Endpoints__Http__Protocols: Http1
+      Kestrel__Endpoints__Grpc__Url: http://+:8081
+      Kestrel__Endpoints__Grpc__Protocols: Http2
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__PlanningDb: "Server=sqlserver,1433;Database=PlanningDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
@@ -136,6 +139,8 @@ services:
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
       RabbitMQ__ExchangeName: racehorse.events
+    expose:
+      - "8081"
     networks:
       - racehorse_net
 
@@ -160,6 +165,7 @@ services:
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
       RabbitMQ__ExchangeName: racehorse.events
+      PlanningGrpc__Address: http://planning-api:8081
     ports:
       - "${TRACKING_PORT:-8084}:8080"
     networks:

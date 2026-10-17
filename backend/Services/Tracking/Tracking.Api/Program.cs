@@ -1,6 +1,8 @@
 using BuildingBlocks.Api;
 using BuildingBlocks.Middleware;
 using Tracking.Api.Endpoints;
+using Tracking.Api.Grpc;
+using Contracts.Grpc.Planning;
 using Tracking.Application.Services;
 using Tracking.Infrastructure.Repositories;
 using Tracking.Infrastructure.Messaging;
@@ -11,6 +13,11 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddGrpcClient<PlanningQuery.PlanningQueryClient>(options =>
+{
+    options.Address = new Uri(builder.Configuration["PlanningGrpc:Address"] ?? "http://localhost:8081");
+});
+builder.Services.AddScoped<PlanningGrpcClient>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -112,4 +119,5 @@ app.MapTripExecutionEndpoints();
 app.MapGpsTrackingEndpoints();
 app.MapHorseHealthEndpoints();
 app.MapSeedingEndpoints();
+app.MapPlanningGrpcEndpoints();
 app.Run();

@@ -8,6 +8,7 @@ Hệ thống Quản lý Vận chuyển Ngựa đua Xuyên Quốc gia (PRN232 - M
 - **Kiến trúc**: Microservices (Clean Architecture: Domain, Application, Infrastructure, Api)
 - **API Gateway**: YARP (Yet Another Reverse Proxy)
 - **Message Broker**: RabbitMQ (Integration Events qua Outbox / Inbox Pattern)
+- **Internal RPC**: gRPC/Protobuf (Tracking truy vấn Planning trip summary qua HTTP/2)
 - **Database**: SQL Server (Database-per-service: 8 cơ sở dữ liệu riêng biệt)
 - **Object Storage**: S3-compatible (MinIO / AWS S3)
 - **Client**: React Native (TypeScript)
@@ -59,3 +60,7 @@ dotnet build RacehorseTransport.sln
 ├── .env.example
 └── RacehorseTransport.sln
 ```
+
+## 5. Assessment evidence
+
+Đối chiếu code, cấu hình và kịch bản demo theo từng tiêu chí chấm điểm tại [`Docs/ASSESSMENT_EVIDENCE.md`](Docs/ASSESSMENT_EVIDENCE.md).

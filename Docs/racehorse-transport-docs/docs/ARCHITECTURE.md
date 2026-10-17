@@ -66,7 +66,13 @@ References:
 
 ## 4. Synchronous vs asynchronous communication
 
-Use synchronous HTTP through Gateway or internal service API when the caller needs an immediate answer.
+Use synchronous HTTP through Gateway when the client needs an immediate answer. For a strongly typed, low-latency internal query, Tracking calls Planning through the contract-first `PlanningQuery` gRPC service over HTTP/2 on the private Compose network.
+
+```text
+Client → Gateway → Tracking REST API → Planning gRPC API → PlanningDb
+```
+
+The public edge remains REST/JSON; the gRPC port is not published to the host.
 
 Use RabbitMQ event when:
 

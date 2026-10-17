@@ -5,12 +5,14 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Planning.Api;
+using Planning.Api.Grpc;
 using Planning.Application.Abstractions;
 using Planning.Application.Services;
 using Planning.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
+builder.Services.AddGrpc();
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "racehorse-identity";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "racehorse-api";
@@ -81,6 +83,7 @@ api.MapGroup("").RequireAuthorization("PlanningAccess").MapPlanningMasterData();
 api.MapGroup("").RequireAuthorization("PlanningAccess").MapPlanningCommands();
 
 app.MapServiceHealth("planning");
+app.MapGrpcService<PlanningQueryGrpcService>();
 
 // Auto initialize and verify database schema
 await DatabaseInitializer.InitializeDatabaseAsync(app.Services, app.Logger);
