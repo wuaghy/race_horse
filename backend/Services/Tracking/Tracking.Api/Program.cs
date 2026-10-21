@@ -66,9 +66,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("TrackingRead", policy => policy.RequireRole(
-        "CUSTOMER", "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+        "CUSTOMER", "DRIVER", "ESCORT", "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
     options.AddPolicy("TrackingUpdate", policy => policy.RequireRole(
-        "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+        "DRIVER", "ESCORT", "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
 });
 
 // Register Trip Execution services

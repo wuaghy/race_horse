@@ -2,6 +2,7 @@ using System.Text.Json;
 using BuildingBlocks.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Planning.Application.Abstractions;
+using Planning.Application.DTOs.Common;
 using Planning.Application.DTOs.Planning;
 using Planning.Domain;
 
@@ -65,6 +66,54 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
         return MapTrip(trip);
     }
 
+    public async Task<RoutePlanDto> GetRoutePlanByTripAsync(Guid tripId, CancellationToken ct = default)
+    {
+        var plan = await db.RoutePlans.AsNoTracking().FirstOrDefaultAsync(item => item.TripId == tripId, ct)
+            ?? throw new NotFoundException("Route plan for trip", tripId);
+        return MapPlan(plan);
+    }
+
+    public async Task<PagedResult<TripDto>> GetTripsAsync(PaginationFilter filter, string? status = null, CancellationToken ct = default)
+    {
+        var query = db.TransportTrips.AsNoTracking();
+        var search = filter.Search?.Trim();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = Guid.TryParse(search, out var tripId)
+                ? query.Where(t => t.Id == tripId || t.TripNo.Contains(search))
+                : query.Where(t => t.TripNo.Contains(search));
+        }
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var normalizedStatus = status.Trim().ToUpperInvariant();
+            query = query.Where(t => t.Status.ToUpper() == normalizedStatus);
+        }
+
+        var total = await query.LongCountAsync(ct);
+        var page = filter.NormalizedPage;
+        var size = filter.NormalizedPageSize;
+        var items = await query
+            .OrderByDescending(t => t.PlannedDepartureAt ?? t.CreatedAt)
+            .ThenByDescending(t => t.CreatedAt)
+            .Skip(page * size)
+            .Take(size)
+            .ToListAsync(ct);
+
+        return new PagedResult<TripDto>(items.Select(MapTrip).ToList(), page, size, total);
+    }
+
+    public async Task<IReadOnlyList<TripDto>> GetAssignedTripsAsync(Guid userId, CancellationToken ct = default)
+    {
+        var trips = await db.TransportTrips.AsNoTracking()
+            .Where(trip => db.StaffAssignments.Any(assignment =>
+                assignment.TripId == trip.Id && assignment.UserId == userId && assignment.ReleasedAt == null))
+            .OrderByDescending(trip => trip.PlannedDepartureAt ?? trip.CreatedAt)
+            .ThenByDescending(trip => trip.CreatedAt)
+            .ToListAsync(ct);
+
+        return trips.Select(MapTrip).ToList();
+    }
+
     // ==========================================
     // Route Plans & Versions
     // ==========================================
@@ -87,6 +136,7 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
         };
 
         db.RoutePlans.Add(plan);
+        await db.SaveChangesAsync(ct);
 
         var version = new RoutePlanVersion
         {

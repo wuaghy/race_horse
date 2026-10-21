@@ -1,5 +1,6 @@
 using BuildingBlocks.Api;
 using System.Security.Claims;
+using Planning.Application.DTOs.Common;
 using Planning.Application.DTOs.Planning;
 using Planning.Application.DTOs.Readiness;
 using Planning.Application.Services;
@@ -13,6 +14,15 @@ public static class PlanningCommandEndpoints
         // ==========================================
         // Trips (T10)
         // ==========================================
+        api.MapGet("/trips", async ([AsParameters] PaginationFilter filter, string? status, ITripPlanningService svc, CancellationToken ct) =>
+        {
+            var result = await svc.GetTripsAsync(filter, status, ct);
+            return Results.Ok(ApiResponse<IReadOnlyList<TripDto>>.Success(
+                result.Items,
+                new PaginationMeta { Page = result.Page, PageSize = result.PageSize, TotalItems = result.TotalItems, TotalPages = result.TotalPages }
+            ));
+        }).WithName("ListTrips");
+
         api.MapPost("/trips", async (CreateTripInput input, ITripPlanningService svc, CancellationToken ct) =>
         {
             var trip = await svc.CreateTripAsync(input, ct);
@@ -21,6 +31,9 @@ public static class PlanningCommandEndpoints
 
         api.MapGet("/trips/{id:guid}", async (Guid id, ITripPlanningService svc, CancellationToken ct) =>
             Results.Ok(ApiResponse<TripDto>.Success(await svc.GetTripByIdAsync(id, ct))));
+
+        api.MapGet("/trips/{id:guid}/route-plan", async (Guid id, ITripPlanningService svc, CancellationToken ct) =>
+            Results.Ok(ApiResponse<RoutePlanDto>.Success(await svc.GetRoutePlanByTripAsync(id, ct))));
 
         api.MapPost("/trips/{id:guid}/route-change-requests", async (
             Guid id,

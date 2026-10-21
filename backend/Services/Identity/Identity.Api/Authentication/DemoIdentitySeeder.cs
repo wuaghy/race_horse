@@ -26,7 +26,9 @@ public sealed class DemoIdentitySeeder(
         var passwordHashService = scope.ServiceProvider.GetRequiredService<IPasswordHashService>();
         await EnsureUserAsync(store, passwordHashService, DemoUsers.CustomerId, "customer.demo@racehorse.local", "Demo Customer", "CUSTOMER", password, cancellationToken);
         await EnsureUserAsync(store, passwordHashService, DemoUsers.ManagerId, "manager.demo@racehorse.local", "Demo Logistics Manager", "LOGISTICS_MANAGER", password, cancellationToken);
-        logger.LogInformation("Development demo identities are ready; both use the configured DemoData password.");
+        await EnsureUserAsync(store, passwordHashService, DemoUsers.DriverId, "driver.demo@racehorse.local", "Demo Driver & Escort", "DRIVER_ESCORT", password, cancellationToken);
+        await EnsureUserAsync(store, passwordHashService, DemoUsers.AdminId, "admin.demo@racehorse.local", "Demo Administrator", "ADMIN", password, cancellationToken);
+        logger.LogInformation("Development demo identities are ready; all use the configured DemoData password.");
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -51,4 +53,6 @@ public static class DemoUsers
 {
     public static readonly Guid CustomerId = Guid.Parse("11111111-1111-4111-8111-111111111111");
     public static readonly Guid ManagerId = Guid.Parse("22222222-2222-4222-8222-222222222222");
+    public static readonly Guid DriverId = Guid.Parse("33333333-3333-4333-8333-333333333333");
+    public static readonly Guid AdminId = Guid.Parse("44444444-4444-4444-8444-444444444444");
 }

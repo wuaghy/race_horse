@@ -1,4 +1,5 @@
 using Planning.Application.DTOs.Planning;
+using Planning.Application.DTOs.Common;
 
 namespace Planning.Application.Services;
 
@@ -7,6 +8,9 @@ public interface ITripPlanningService
     // Trips
     Task<TripDto> CreateTripAsync(CreateTripInput input, CancellationToken ct = default);
     Task<TripDto> GetTripByIdAsync(Guid id, CancellationToken ct = default);
+    Task<PagedResult<TripDto>> GetTripsAsync(PaginationFilter filter, string? status = null, CancellationToken ct = default);
+    Task<IReadOnlyList<TripDto>> GetAssignedTripsAsync(Guid userId, CancellationToken ct = default);
+    Task<RoutePlanDto> GetRoutePlanByTripAsync(Guid tripId, CancellationToken ct = default);
 
     // Route Plans & Versions
     Task<RoutePlanDto> CreateRoutePlanAsync(Guid tripId, Guid actorUserId, CancellationToken ct = default);

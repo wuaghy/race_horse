@@ -40,7 +40,12 @@ public sealed record TransportRequestRecord(
     int VersionNo,
     IReadOnlyList<Guid> HorseIds,
     Guid? OrderId,
-    string? OrderNo);
+    string? OrderNo)
+{
+    public IReadOnlyList<TransportRequestHorse> Horses { get; init; } = [];
+}
+
+public sealed record TransportRequestHorse(Guid Id, string HorseCode, string HorseName);
 
 public sealed record ManagerDecisionInput(string? Reason);
 

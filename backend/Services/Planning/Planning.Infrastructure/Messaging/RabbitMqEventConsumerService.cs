@@ -127,12 +127,17 @@ public class RabbitMqEventConsumerService : BackgroundService
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
 
-        // Try extracting inner 'data' envelope or directly from root
-        var data = root.TryGetProperty("data", out var dataProp) ? dataProp : root;
+        // Event publishers may wrap the integration event in an API envelope,
+        // and the integration event payload itself can contain another `data` object.
+        var data = TryGetPropertyIgnoreCase(root, "data", out var dataProp) ? dataProp : root;
+        if (TryGetPropertyIgnoreCase(data, "data", out var nestedData) && nestedData.ValueKind == JsonValueKind.Object)
+        {
+            data = nestedData;
+        }
 
         if (eventType == "Booking.OrderCreated")
         {
-            if (data.TryGetProperty("orderId", out var orderIdProp) && Guid.TryParse(orderIdProp.GetString(), out var orderId))
+            if (TryGetPropertyIgnoreCase(data, "orderId", out var orderIdProp) && Guid.TryParse(orderIdProp.GetString(), out var orderId))
             {
                 var planningSvc = scope.ServiceProvider.GetRequiredService<ITripPlanningService>();
                 var trip = await planningSvc.CreateTripAsync(new CreateTripInput(orderId), ct);
@@ -142,7 +147,7 @@ public class RabbitMqEventConsumerService : BackgroundService
         }
         else if (eventType == "Compliance.ComplianceReady")
         {
-            if (data.TryGetProperty("tripId", out var tripIdProp) && Guid.TryParse(tripIdProp.GetString(), out var tripId))
+            if (TryGetPropertyIgnoreCase(data, "tripId", out var tripIdProp) && Guid.TryParse(tripIdProp.GetString(), out var tripId))
             {
                 var readinessSvc = scope.ServiceProvider.GetRequiredService<ITripReadinessService>();
                 await readinessSvc.SetComplianceReadyAsync(tripId, ct);
@@ -151,8 +156,8 @@ public class RabbitMqEventConsumerService : BackgroundService
         }
         else if (eventType == "Handover.HandoverCompleted")
         {
-            if (data.TryGetProperty("tripId", out var tripIdProp) && Guid.TryParse(tripIdProp.GetString(), out var tripId)
-                && data.TryGetProperty("completedByUserId", out var actorProp) && Guid.TryParse(actorProp.GetString(), out var actorId))
+            if (TryGetPropertyIgnoreCase(data, "tripId", out var tripIdProp) && Guid.TryParse(tripIdProp.GetString(), out var tripId)
+                && TryGetPropertyIgnoreCase(data, "completedByUserId", out var actorProp) && Guid.TryParse(actorProp.GetString(), out var actorId))
             {
                 var db = scope.ServiceProvider.GetRequiredService<PlanningDbContext>();
                 var trip = await db.TransportTrips.SingleOrDefaultAsync(x => x.Id == tripId, ct);
@@ -197,5 +202,23 @@ public class RabbitMqEventConsumerService : BackgroundService
         _channel?.Dispose();
         _connection?.Dispose();
         base.Dispose();
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = default;
+        return false;
     }
 }

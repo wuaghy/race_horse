@@ -15,6 +15,25 @@ public sealed class SqlIdentityStore : IIdentityStore
             ?? throw new InvalidOperationException("ConnectionStrings:IdentityDb must be configured.");
     }
 
+    public async Task<IReadOnlyList<StaffDirectoryAccount>> ListStaffAccountsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(
+            "SELECT u.Id, u.Email, u.FullName, r.Code " +
+            "FROM dbo.Users AS u INNER JOIN dbo.Roles AS r ON r.Id = u.RoleId " +
+            "WHERE u.Status = 'ACTIVE' AND r.Code IN ('DRIVER', 'ESCORT', 'DRIVER_ESCORT') " +
+            "ORDER BY u.FullName, u.Email;",
+            connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var accounts = new List<StaffDirectoryAccount>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            accounts.Add(new StaffDirectoryAccount(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+        }
+        return accounts;
+    }
+
     public async Task<AuthUser?> FindByEmailAsync(string email, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(_connectionString);

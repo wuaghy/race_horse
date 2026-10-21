@@ -64,6 +64,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("LogisticsManager", policy => policy.RequireRole("LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("StaffDirectory", policy => policy.RequireRole("LOGISTICS_MANAGER", "TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "ADMIN"));
 });
 
 var app = builder.Build();
@@ -97,6 +98,7 @@ app.MapGet("/health", (HttpContext context) =>
 .WithName("GetIdentityHealth");
 
 app.MapAuthEndpoints();
+app.MapStaffDirectoryEndpoints();
 app.MapIdentityDashboardEndpoints();
 
 app.Run();

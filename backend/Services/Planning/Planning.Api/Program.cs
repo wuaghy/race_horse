@@ -61,6 +61,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("PlanningAccess", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningAssignedTrips", policy => policy.RequireRole("DRIVER", "ESCORT", "DRIVER_ESCORT"));
+    options.AddPolicy("PlanningLocationRead", policy => policy.RequireRole("CUSTOMER", "TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
     options.AddPolicy("PlanningApproval", policy => policy.RequireRole("LOGISTICS_MANAGER", "ADMIN"));
 });
 
@@ -101,6 +103,8 @@ if (app.Environment.IsDevelopment())
 var api = app.MapGroup("/api/v1");
 api.MapGroup("").RequireAuthorization("PlanningAccess").MapPlanningMasterData();
 api.MapGroup("").RequireAuthorization("PlanningAccess").MapPlanningCommands();
+api.MapGroup("").RequireAuthorization("PlanningAssignedTrips").MapAssignedTripEndpoints();
+api.MapGroup("").RequireAuthorization("PlanningLocationRead").MapBookingLocationRead();
 
 app.MapServiceHealth("planning");
 app.MapGrpcService<PlanningQueryGrpcService>();

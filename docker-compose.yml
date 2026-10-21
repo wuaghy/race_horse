@@ -358,6 +358,7 @@ services:
 
 volumes:
   sqlserver_data:
+    name: ${SQLSERVER_DATA_VOLUME:-race_horse_sqlserver_data}
   rabbitmq_data:
   minio_data:
   compliance_files:

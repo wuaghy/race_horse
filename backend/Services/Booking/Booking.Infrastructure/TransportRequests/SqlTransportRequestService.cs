@@ -428,24 +428,27 @@ public sealed class SqlTransportRequestService : ITransportRequestService
                 reader.IsDBNull(16) ? null : reader.GetString(16));
         }
 
-        return request with { HorseIds = await ReadHorseIdsAsync(connection, transaction, requestId, cancellationToken) };
+        var horses = await ReadRequestHorsesAsync(connection, transaction, requestId, cancellationToken);
+        return request with { HorseIds = horses.Select(horse => horse.Id).ToList(), Horses = horses };
     }
 
-    private static async Task<IReadOnlyList<Guid>> ReadHorseIdsAsync(SqlConnection connection, SqlTransaction? transaction, Guid requestId, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<TransportRequestHorse>> ReadRequestHorsesAsync(SqlConnection connection, SqlTransaction? transaction, Guid requestId, CancellationToken cancellationToken)
     {
         await using var command = new SqlCommand(
-            "SELECT HorseId FROM dbo.TransportRequestHorses WHERE RequestId = @RequestId ORDER BY CreatedAt, Id;",
+            "SELECT h.Id, h.HorseCode, h.HorseName FROM dbo.TransportRequestHorses AS rh " +
+            "INNER JOIN dbo.Horses AS h ON h.Id = rh.HorseId " +
+            "WHERE rh.RequestId = @RequestId ORDER BY rh.CreatedAt, rh.Id;",
             connection,
             transaction);
         command.Parameters.Add("@RequestId", SqlDbType.UniqueIdentifier).Value = requestId;
-        var horseIds = new List<Guid>();
+        var horses = new List<TransportRequestHorse>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            horseIds.Add(reader.GetGuid(0));
+            horses.Add(new TransportRequestHorse(reader.GetGuid(0), reader.GetString(1), reader.GetString(2)));
         }
 
-        return horseIds;
+        return horses;
     }
 
     private static async Task<IReadOnlyList<TransportRequestListItem>> ReadListAsync(SqlCommand command, CancellationToken cancellationToken)

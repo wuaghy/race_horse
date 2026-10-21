@@ -9,6 +9,8 @@ public sealed record AuthUser(
     string? PasswordHash,
     string Status);
 
+public sealed record StaffDirectoryAccount(Guid Id, string Email, string FullName, string Role);
+
 public sealed record AuthenticatedIdentity(Guid Id, string Email, string FullName, string Role);
 
 public sealed record IssuedAccessToken(string Value, DateTimeOffset ExpiresAt);
@@ -62,6 +64,8 @@ public interface IIdentityAuthService
 
 public interface IIdentityStore
 {
+    Task<IReadOnlyList<StaffDirectoryAccount>> ListStaffAccountsAsync(CancellationToken cancellationToken);
+
     Task<AuthUser?> FindByEmailAsync(string email, CancellationToken cancellationToken);
 
     Task<AuthUser?> FindByIdAsync(Guid id, CancellationToken cancellationToken);

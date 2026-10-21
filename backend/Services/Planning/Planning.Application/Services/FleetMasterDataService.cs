@@ -126,13 +126,16 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
         if (!await db.Countries.AnyAsync(c => c.Id == input.CountryId, ct))
             throw new NotFoundException("Country", input.CountryId);
 
-        if (!string.IsNullOrWhiteSpace(input.LocationCode) &&
-            await db.Locations.AnyAsync(l => l.LocationCode != null && l.LocationCode.ToLower() == input.LocationCode.Trim().ToLower(), ct))
-            throw new BusinessRuleException($"Location with code '{input.LocationCode}' already exists.", "DUPLICATE_LOCATION_CODE", "locationCode");
+        var locationCode = string.IsNullOrWhiteSpace(input.LocationCode)
+            ? $"LOC-{Guid.NewGuid():N}".ToUpperInvariant()
+            : input.LocationCode.Trim().ToUpperInvariant();
+
+        if (await db.Locations.AnyAsync(l => l.LocationCode != null && l.LocationCode.ToLower() == locationCode.ToLower(), ct))
+            throw new BusinessRuleException($"Location with code '{locationCode}' already exists.", "DUPLICATE_LOCATION_CODE", "locationCode");
 
         var entity = new Location
         {
-            LocationCode = input.LocationCode?.Trim(),
+            LocationCode = locationCode,
             Name = input.Name.Trim(),
             LocationType = input.LocationType.Trim().ToUpperInvariant(),
             Address = input.Address?.Trim(),
@@ -229,15 +232,19 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
         if (input.HorseCapacity <= 0 || input.StallCapacity <= 0)
             throw new BusinessRuleException("Horse and stall capacity must be greater than zero.", "INVALID_CAPACITY", "horseCapacity");
 
-        if (await db.Vehicles.AnyAsync(v => v.VehicleCode.ToLower() == input.VehicleCode.Trim().ToLower(), ct))
-            throw new BusinessRuleException($"Vehicle code '{input.VehicleCode}' already exists.", "DUPLICATE_VEHICLE_CODE", "vehicleCode");
+        var vehicleCode = string.IsNullOrWhiteSpace(input.VehicleCode)
+            ? $"VEH-{Guid.NewGuid():N}".ToUpperInvariant()
+            : input.VehicleCode.Trim().ToUpperInvariant();
+
+        if (await db.Vehicles.AnyAsync(v => v.VehicleCode.ToLower() == vehicleCode.ToLower(), ct))
+            throw new BusinessRuleException($"Vehicle code '{vehicleCode}' already exists.", "DUPLICATE_VEHICLE_CODE", "vehicleCode");
 
         if (await db.Vehicles.AnyAsync(v => v.PlateNumber.ToLower() == input.PlateNumber.Trim().ToLower(), ct))
             throw new BusinessRuleException($"Plate number '{input.PlateNumber}' already exists.", "DUPLICATE_PLATE_NUMBER", "plateNumber");
 
         var entity = new Vehicle
         {
-            VehicleCode = input.VehicleCode.Trim().ToUpperInvariant(),
+            VehicleCode = vehicleCode,
             PlateNumber = input.PlateNumber.Trim().ToUpperInvariant(),
             VehicleType = input.VehicleType.Trim().ToUpperInvariant(),
             HorseCapacity = input.HorseCapacity,
@@ -333,12 +340,16 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
         if (input.Capacity <= 0)
             throw new BusinessRuleException("Stall capacity must be greater than zero.", "INVALID_CAPACITY", "capacity");
 
-        if (await db.Stalls.AnyAsync(s => s.StallCode.ToLower() == input.StallCode.Trim().ToLower(), ct))
-            throw new BusinessRuleException($"Stall code '{input.StallCode}' already exists.", "DUPLICATE_STALL_CODE", "stallCode");
+        var stallCode = string.IsNullOrWhiteSpace(input.StallCode)
+            ? $"STALL-{Guid.NewGuid():N}".ToUpperInvariant()
+            : input.StallCode.Trim().ToUpperInvariant();
+
+        if (await db.Stalls.AnyAsync(s => s.StallCode.ToLower() == stallCode.ToLower(), ct))
+            throw new BusinessRuleException($"Stall code '{stallCode}' already exists.", "DUPLICATE_STALL_CODE", "stallCode");
 
         var entity = new Stall
         {
-            StallCode = input.StallCode.Trim().ToUpperInvariant(),
+            StallCode = stallCode,
             StallType = input.StallType?.Trim(),
             Capacity = input.Capacity,
             Active = input.Active,
