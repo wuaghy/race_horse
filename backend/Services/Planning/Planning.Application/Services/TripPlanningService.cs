@@ -769,6 +769,8 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
 
     public async Task<RoutePlanVersionDto> ActivateRouteVersionAsync(Guid versionId, Guid actorUserId, CancellationToken ct = default)
     {
+        await using var tx = await db.BeginTransactionAsync(ct);
+
         var version = await db.RoutePlanVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
             ?? throw new NotFoundException("RoutePlanVersion", versionId);
 
@@ -789,6 +791,14 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
         foreach (var av in activeVersions)
         {
             av.Status = PlanningConstants.RouteVersionStatus.Archived;
+        }
+
+        // The database enforces one ACTIVE version per plan with a unique index.
+        // Persist archiving before setting the replacement ACTIVE so SQL Server
+        // cannot attempt the new ACTIVE insert/update before the old row is archived.
+        if (activeVersions.Count > 0)
+        {
+            await db.SaveChangesAsync(ct);
         }
 
         version.Status = PlanningConstants.RouteVersionStatus.Active;
@@ -835,6 +845,10 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
         });
 
         await db.SaveChangesAsync(ct);
+        if (tx is not null)
+        {
+            await tx.CommitAsync(ct);
+        }
         return MapVersion(version);
     }
 

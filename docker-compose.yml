@@ -85,6 +85,8 @@ services:
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
       RabbitMQ__Enabled: "true"
+      RabbitMQ__ExchangeName: racehorse.events
+      RabbitMQ__BookingQueueName: booking-service.inbox
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
     ports:
@@ -163,6 +165,7 @@ services:
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
       ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__TrackingDb: "Server=sqlserver,1433;Database=TrackingDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}

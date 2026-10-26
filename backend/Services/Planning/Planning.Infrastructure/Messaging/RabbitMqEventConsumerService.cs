@@ -105,7 +105,7 @@ public class RabbitMqEventConsumerService : BackgroundService
                 cancellationToken: stoppingToken
             );
 
-            _logger.LogInformation("Planning RabbitMQ Consumer listening on queue '{Queue}' for Booking.OrderCreated & Compliance.ComplianceReady.", _options.QueueName);
+            _logger.LogInformation("Planning RabbitMQ Consumer listening on queue '{Queue}' for Booking.OrderCreated, Compliance.ComplianceReady & Handover.HandoverCompleted.", _options.QueueName);
 
             // Keep alive until cancelled
             await Task.Delay(Timeout.Infinite, stoppingToken);
@@ -185,8 +185,40 @@ public class RabbitMqEventConsumerService : BackgroundService
                         CorrelationId = root.TryGetProperty("correlationId", out var correlation) && Guid.TryParse(correlation.GetString(), out var correlationId) ? correlationId : null,
                         OccurredAt = DateTime.UtcNow
                     });
-                    await db.SaveChangesAsync(ct);
                 }
+
+                // Also recover a previously completed Trip if its original consumer ran before
+                // this downstream Order-completion event existed and the handover event is replayed.
+                var tripCompletedEventQueued = await db.OutboxMessages.AnyAsync(
+                    message => message.EventType == "Planning.TripCompleted" && message.AggregateId == trip.Id,
+                    ct);
+                if (!tripCompletedEventQueued)
+                {
+                    var completionCorrelationId = root.TryGetProperty("correlationId", out var eventCorrelation)
+                        && Guid.TryParse(eventCorrelation.GetString(), out var parsedCorrelationId)
+                        ? parsedCorrelationId
+                        : Guid.NewGuid();
+                    db.OutboxMessages.Add(new OutboxMessage
+                    {
+                        EventType = "Planning.TripCompleted",
+                        AggregateType = "TransportTrip",
+                        AggregateId = trip.Id,
+                        Payload = JsonSerializer.Serialize(new
+                        {
+                            tripId = trip.Id,
+                            tripNo = trip.TripNo,
+                            orderId = trip.OrderId,
+                            status = PlanningConstants.TripStatus.Completed
+                        }),
+                        CorrelationId = completionCorrelationId,
+                        OccurredAt = DateTime.UtcNow,
+                        Status = "PENDING",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+
+                if (db.ChangeTracker.HasChanges())
+                    await db.SaveChangesAsync(ct);
 
                 _logger.LogInformation("Marked Trip {TripId} completed from Handover.HandoverCompleted.", tripId);
             }

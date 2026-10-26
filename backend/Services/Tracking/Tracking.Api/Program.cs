@@ -4,7 +4,7 @@ using Tracking.Api.Endpoints;
 using Tracking.Api.Grpc;
 using Contracts.Grpc.Planning;
 using Tracking.Application.Services;
-using Tracking.Infrastructure.Repositories;
+using Tracking.Infrastructure;
 using Tracking.Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -73,21 +73,9 @@ builder.Services.AddAuthorization(options =>
 
 // Register Trip Execution services
 builder.Services.AddScoped<ITripExecutionService, TripExecutionService>();
-builder.Services.AddScoped<ITripExecutionRepository, InMemoryTripExecutionRepository>();
-builder.Services.AddScoped<ICheckpointEventRepository, InMemoryCheckpointEventRepository>();
-builder.Services.AddScoped<IOutboxMessageRepository, InMemoryOutboxMessageRepository>();
-
-// Register GPS Tracking services
+builder.Services.AddTrackingInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IGpsTrackingService, GpsTrackingService>();
-builder.Services.AddScoped<IGpsPointRepository, InMemoryGpsPointRepository>();
-builder.Services.AddScoped<ILocationHistoryRepository, InMemoryLocationHistoryRepository>();
-builder.Services.AddScoped<IEtaRepository, InMemoryEtaRepository>();
-
-// Register Horse Health services
 builder.Services.AddScoped<IHorseHealthService, HorseHealthService>();
-builder.Services.AddScoped<IHealthLogRepository, InMemoryHealthLogRepository>();
-builder.Services.AddScoped<IHealthAlertRepository, InMemoryHealthAlertRepository>();
-builder.Services.AddScoped<IHealthStatusRepository, InMemoryHealthStatusRepository>();
 builder.Services.Configure<RabbitMqOptions>(builder.Configuration.GetSection(RabbitMqOptions.SectionName));
 builder.Services.AddSingleton<TrackingMessageBus>();
 builder.Services.AddSingleton<ITrackingMessageBus>(sp => sp.GetRequiredService<TrackingMessageBus>());

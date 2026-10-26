@@ -24,7 +24,7 @@ public record InitiateTripExecutionInput(
 public record CheckpointEventDto(
     Guid Id,
     Guid TripExecutionId,
-    Guid LocationId,
+    Guid? LocationId,
     int SequenceNo,
     string CheckpointType,
     string Status,

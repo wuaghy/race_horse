@@ -102,8 +102,11 @@ public class GpsTrackingService : IGpsTrackingService
 
     public async Task<GpsPointDto?> GetLatestGpsPointAsync(Guid tripId, CancellationToken cancellationToken)
     {
-        var trip = await _tripRepository.GetByTripIdAsync(tripId, cancellationToken)
-            ?? throw new InvalidOperationException($"Trip {tripId} not found");
+        var trip = await _tripRepository.GetByTripIdAsync(tripId, cancellationToken);
+        if (trip is null)
+        {
+            return null;
+        }
 
         var point = await _gpsPointRepository.GetLatestByTripExecutionIdAsync(trip.Id, cancellationToken);
         return point == null ? null : MapToDto(point);
@@ -236,8 +239,11 @@ public class GpsTrackingService : IGpsTrackingService
 
     public async Task<EstimatedTimeOfArrivalDto?> GetCurrentEtaAsync(Guid tripId, CancellationToken cancellationToken)
     {
-        var trip = await _tripRepository.GetByTripIdAsync(tripId, cancellationToken)
-            ?? throw new InvalidOperationException($"Trip {tripId} not found");
+        var trip = await _tripRepository.GetByTripIdAsync(tripId, cancellationToken);
+        if (trip is null)
+        {
+            return null;
+        }
 
         var eta = await _etaRepository.GetLatestByTripExecutionIdAsync(trip.Id, cancellationToken);
         return eta == null ? null : MapToDto(eta);

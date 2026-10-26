@@ -55,7 +55,7 @@ public sealed class TripExecution : Entity
 public sealed class CheckpointEvent : Entity
 {
     public Guid TripExecutionId { get; set; }
-    public Guid LocationId { get; set; }
+    public Guid? LocationId { get; set; }
     public int SequenceNo { get; set; }
     public string CheckpointType { get; set; } = null!;
     public string Status { get; set; } = TrackingConstants.CheckpointStatus.Planned;

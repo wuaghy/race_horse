@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<IBookingDashboardService, SqlBookingDashboardService>();
         services.AddScoped<ITransportRequestService, SqlTransportRequestService>();
         services.AddHostedService<BookingOutboxPublisher>();
+        services.AddHostedService<BookingEventConsumer>();
         return services;
     }
 }
