@@ -19,6 +19,24 @@ public sealed class SqlTransportRequestService : ITransportRequestService
             ?? throw new InvalidOperationException("ConnectionStrings:BookingDb must be configured.");
     }
 
+    public async Task<OrderStatusSummary?> GetOrderStatusAsync(Guid orderId, Guid? customerIdentityUserId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = new SqlCommand(
+            "SELECT o.Id, o.OrderNo, o.RequestId, o.Status, o.UpdatedAt " +
+            "FROM dbo.TransportOrders o " +
+            "INNER JOIN dbo.TransportRequests r ON r.Id = o.RequestId " +
+            "INNER JOIN dbo.Customers c ON c.Id = r.CustomerId " +
+            "WHERE o.Id = @OrderId AND (@CustomerIdentityUserId IS NULL OR c.IdentityUserId = @CustomerIdentityUserId);",
+            connection);
+        command.Parameters.Add("@OrderId", SqlDbType.UniqueIdentifier).Value = orderId;
+        command.Parameters.Add("@CustomerIdentityUserId", SqlDbType.UniqueIdentifier).Value = (object?)customerIdentityUserId ?? DBNull.Value;
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return null;
+        return new OrderStatusSummary(reader.GetGuid(0), reader.GetString(1), reader.GetGuid(2), reader.GetString(3), ToUtcOffset(reader.GetDateTime(4)));
+    }
+
     public async Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, string? search, string? status, CancellationToken cancellationToken)
     {
         ValidatePage(page, pageSize);

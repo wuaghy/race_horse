@@ -47,10 +47,14 @@ public sealed record TransportRequestRecord(
 
 public sealed record TransportRequestHorse(Guid Id, string HorseCode, string HorseName);
 
+public sealed record OrderStatusSummary(Guid Id, string OrderNo, Guid RequestId, string Status, DateTimeOffset UpdatedAt);
+
 public sealed record ManagerDecisionInput(string? Reason);
 
 public interface ITransportRequestService
 {
+    Task<OrderStatusSummary?> GetOrderStatusAsync(Guid orderId, Guid? customerIdentityUserId, CancellationToken cancellationToken);
+
     Task<PageResult<TransportRequestListItem>> GetCustomerRequestsAsync(Guid identityUserId, int page, int pageSize, string? search, string? status, CancellationToken cancellationToken);
 
     Task<TransportRequestRecord?> GetCustomerRequestAsync(Guid identityUserId, Guid requestId, CancellationToken cancellationToken);

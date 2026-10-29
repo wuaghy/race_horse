@@ -55,8 +55,29 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
             Status = "PENDING"
         });
 
-        await db.SaveChangesAsync(ct);
-        return MapTrip(trip);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return MapTrip(trip);
+        }
+        catch (DbUpdateException exception) when (IsDuplicateOrderTrip(exception))
+        {
+            // Booking.OrderCreated can create the Trip concurrently with this request.
+            // The unique OrderId constraint is the final arbiter; return the winner instead
+            // of surfacing a 500 when both paths race after the initial lookup.
+            var concurrentlyCreated = await db.TransportTrips.AsNoTracking()
+                .FirstOrDefaultAsync(item => item.OrderId == input.OrderId, ct);
+            if (concurrentlyCreated is null) throw;
+            return MapTrip(concurrentlyCreated);
+        }
+    }
+
+    private static bool IsDuplicateOrderTrip(DbUpdateException exception)
+    {
+        var inner = exception.InnerException;
+        if (inner is not System.Data.Common.DbException || inner.GetType().Name != "SqlException") return false;
+        var number = inner.GetType().GetProperty("Number")?.GetValue(inner);
+        return number is int value && value is 2601 or 2627;
     }
 
     public async Task<TripDto> GetTripByIdAsync(Guid id, CancellationToken ct = default)
@@ -436,6 +457,9 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
             ?? throw new NotFoundException("RoutePlanVersion", leg.RoutePlanVersionId);
 
         AssertVersionIsDraft(version);
+        var tripId = await db.RoutePlans.Where(plan => plan.Id == version.RoutePlanId)
+            .Select(plan => plan.TripId)
+            .SingleAsync(ct);
 
         if ((input.VehicleId is null) == (input.FlightBookingId is null))
             throw new BusinessRuleException("Must provide exactly one of vehicleId or flightBookingId.", "INVALID_RESOURCE_EXCLUSIVE");
@@ -464,14 +488,14 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
 
                 var isConflict = await db.TripLegAssignments
                     .Where(a => a.VehicleId == vehicle.Id && a.RouteLegId != legId)
-                    .Join(
-                        db.RouteLegs,
-                        a => a.RouteLegId,
-                        l2 => l2.Id,
-                        (a, l2) => new { l2.PlannedDepartureAt, l2.PlannedArrivalAt }
-                    )
-                    .AnyAsync(l2 => l2.PlannedDepartureAt.HasValue && l2.PlannedArrivalAt.HasValue &&
-                                   l2.PlannedDepartureAt.Value < arr && dep < l2.PlannedArrivalAt.Value, ct);
+                    .Join(db.RouteLegs, assignment => assignment.RouteLegId, otherLeg => otherLeg.Id, (assignment, otherLeg) => new { assignment, otherLeg })
+                    .Join(db.RoutePlanVersions, row => row.otherLeg.RoutePlanVersionId, otherVersion => otherVersion.Id, (row, otherVersion) => new { row.assignment, row.otherLeg, otherVersion.Id, otherVersion.Status, otherVersion.RoutePlanId })
+                    .Join(db.RoutePlans, row => row.RoutePlanId, plan => plan.Id, (row, plan) => new { row.assignment, row.otherLeg, row.Id, row.Status, plan.TripId, plan.ActiveVersionId })
+                    .AnyAsync(row => row.TripId != tripId && row.Status == PlanningConstants.RouteVersionStatus.Active && row.ActiveVersionId == row.Id &&
+                        row.otherLeg.PlannedDepartureAt.HasValue && row.otherLeg.PlannedArrivalAt.HasValue &&
+                        row.otherLeg.PlannedDepartureAt.Value < arr && dep < row.otherLeg.PlannedArrivalAt.Value &&
+                        !db.TransportTrips.Any(otherTrip => otherTrip.Id == row.TripId &&
+                            (otherTrip.Status == PlanningConstants.TripStatus.Completed || otherTrip.Status == PlanningConstants.TripStatus.Cancelled)), ct);
 
                 if (isConflict)
                     throw new BusinessRuleException("Vehicle is already assigned to another route leg during this period.", "VEHICLE_DOUBLE_BOOKED");
@@ -540,15 +564,20 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
             var arr = leg.PlannedArrivalAt.Value;
 
             var isConflict = await db.StaffAssignments
-                .Where(s => s.UserId == input.UserId && s.RouteLegId.HasValue && s.RouteLegId.Value != input.LegId)
-                .Join(
-                    db.RouteLegs,
-                    s => s.RouteLegId!.Value,
-                    l2 => l2.Id,
-                    (s, l2) => new { l2.PlannedDepartureAt, l2.PlannedArrivalAt }
-                )
-                .AnyAsync(l2 => l2.PlannedDepartureAt.HasValue && l2.PlannedArrivalAt.HasValue &&
-                               l2.PlannedDepartureAt.Value < arr && dep < l2.PlannedArrivalAt.Value, ct);
+                .Where(s => s.UserId == input.UserId && s.TripId != tripId && s.ReleasedAt == null && s.RouteLegId.HasValue)
+                .Join(db.RouteLegs,
+                    assignment => assignment.RouteLegId!.Value,
+                    otherLeg => otherLeg.Id,
+                    (assignment, otherLeg) => new { assignment, otherLeg })
+                .Join(db.RoutePlanVersions,
+                    row => row.otherLeg.RoutePlanVersionId,
+                    otherVersion => otherVersion.Id,
+                    (row, otherVersion) => new { row.assignment, row.otherLeg, otherVersion.Status })
+                .AnyAsync(row => row.Status == PlanningConstants.RouteVersionStatus.Active &&
+                    row.otherLeg.PlannedDepartureAt.HasValue && row.otherLeg.PlannedArrivalAt.HasValue &&
+                    row.otherLeg.PlannedDepartureAt.Value < arr && dep < row.otherLeg.PlannedArrivalAt.Value &&
+                    !db.TransportTrips.Any(otherTrip => otherTrip.Id == row.assignment.TripId &&
+                        (otherTrip.Status == PlanningConstants.TripStatus.Completed || otherTrip.Status == PlanningConstants.TripStatus.Cancelled)), ct);
 
             if (isConflict)
                 throw new BusinessRuleException("Staff member is already assigned to a conflicting route leg.", "STAFF_DOUBLE_BOOKED");
@@ -587,8 +616,8 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
 
         AssertVersionIsDraft(version);
 
-        if (await db.HorseLegAssignments.AnyAsync(h => h.RouteLegId == input.LegId && h.HorseId == input.HorseId, ct))
-            throw new BusinessRuleException("Horse is already assigned to this route leg.", "HORSE_ALREADY_ASSIGNED");
+        var existingAssignment = await db.HorseLegAssignments
+            .FirstOrDefaultAsync(h => h.RouteLegId == input.LegId && h.HorseId == input.HorseId, ct);
 
         // Check vehicle horse capacity on this leg if vehicle is assigned
         var vehicleAssignment = await db.TripLegAssignments.FirstOrDefaultAsync(a => a.RouteLegId == input.LegId && a.VehicleId != null, ct);
@@ -598,7 +627,8 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
             if (vehicle is not null)
             {
                 var assignedHorseCount = await db.HorseLegAssignments.CountAsync(h => h.RouteLegId == input.LegId, ct);
-                if (assignedHorseCount + 1 > vehicle.HorseCapacity)
+                var additionalHorseCount = existingAssignment is null ? 1 : 0;
+                if (assignedHorseCount + additionalHorseCount > vehicle.HorseCapacity)
                 {
                     throw new BusinessRuleException(
                         $"Vehicle horse capacity ({vehicle.HorseCapacity}) exceeded for route leg {leg.SequenceNo}.",
@@ -624,18 +654,31 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
 
                 var bookedCount = await db.HorseLegAssignments
                     .Where(h => h.StallId == stall.Id)
-                    .Join(
-                        db.RouteLegs,
-                        h => h.RouteLegId,
-                        l2 => l2.Id,
-                        (h, l2) => new { l2.PlannedDepartureAt, l2.PlannedArrivalAt }
-                    )
-                    .CountAsync(l2 => l2.PlannedDepartureAt.HasValue && l2.PlannedArrivalAt.HasValue &&
-                                     l2.PlannedDepartureAt.Value < arr && dep < l2.PlannedArrivalAt.Value, ct);
+                    .Join(db.RouteLegs, assignment => assignment.RouteLegId, otherLeg => otherLeg.Id, (assignment, otherLeg) => new { assignment, otherLeg })
+                    .Join(db.RoutePlanVersions, row => row.otherLeg.RoutePlanVersionId, otherVersion => otherVersion.Id, (row, otherVersion) => new { row.assignment, row.otherLeg, otherVersion.Status, otherVersion.RoutePlanId })
+                    .Join(db.RoutePlans, row => row.RoutePlanId, plan => plan.Id, (row, plan) => new { row.assignment, row.otherLeg, row.Status, plan.TripId, plan.ActiveVersionId })
+                    .CountAsync(row => row.TripId != tripId && row.Status == PlanningConstants.RouteVersionStatus.Active &&
+                        row.ActiveVersionId == row.otherLeg.RoutePlanVersionId &&
+                        row.otherLeg.PlannedDepartureAt.HasValue && row.otherLeg.PlannedArrivalAt.HasValue &&
+                        row.otherLeg.PlannedDepartureAt.Value < arr && dep < row.otherLeg.PlannedArrivalAt.Value &&
+                        !db.TransportTrips.Any(otherTrip => otherTrip.Id == row.TripId &&
+                            (otherTrip.Status == PlanningConstants.TripStatus.Completed || otherTrip.Status == PlanningConstants.TripStatus.Cancelled)), ct);
 
                 if (bookedCount >= stall.Capacity)
                     throw new BusinessRuleException($"Stall capacity ({stall.Capacity}) is full for this interval.", "STALL_CAPACITY_EXCEEDED");
             }
+        }
+
+        if (existingAssignment is not null)
+        {
+            existingAssignment.StallId = input.StallId;
+            await db.SaveChangesAsync(ct);
+
+            if (tx is not null)
+                await tx.CommitAsync(ct);
+
+            return new HorseAssignmentDto(existingAssignment.Id, existingAssignment.TripId, existingAssignment.HorseId,
+                existingAssignment.RouteLegId, existingAssignment.StallId, existingAssignment.BoardedAt, existingAssignment.UnboardedAt);
         }
 
         var assignment = new HorseLegAssignment

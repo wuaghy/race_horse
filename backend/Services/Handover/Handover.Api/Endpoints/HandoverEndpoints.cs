@@ -59,7 +59,10 @@ public static class HandoverEndpoints
             if (actorId is null) return Results.Unauthorized();
             var handover = await service.GetByTripIdAsync(tripId, ct);
             if (handover is null) return Results.NotFound(ApiResponse<object>.Failure(40400, "Handover record not found for trip."));
-            if (!CanAccessHandover(user, handover)) return Results.Forbid();
+            if (!CanAccessHandover(user, handover))
+            {
+                return Results.Forbid();
+            }
             return Results.Ok(ApiResponse<HandoverDto>.Success(handover));
         }).WithName("GetHandoverByTripId");
 
@@ -570,13 +573,19 @@ public static class HandoverEndpoints
         if (user.IsInRole("DRIVER_ESCORT")) return actorId == handover.CreatedByUserId;
         if (user.IsInRole("CUSTOMER"))
         {
-            var email = user.FindFirst("email")?.Value;
             return actorId == handover.CreatedByUserId ||
-                (!string.IsNullOrWhiteSpace(email) && !string.IsNullOrWhiteSpace(handover.ReceiverEmail) &&
-                 string.Equals(email.Trim(), handover.ReceiverEmail.Trim(), StringComparison.OrdinalIgnoreCase));
+                (!string.IsNullOrWhiteSpace(handover.ReceiverEmail) && UserEmails(user).Any(email =>
+                    string.Equals(email.Trim(), handover.ReceiverEmail.Trim(), StringComparison.OrdinalIgnoreCase)));
         }
         return user.IsInRole("FLEET_ROUTE_COORDINATOR") || user.IsInRole("LOGISTICS_MANAGER") || user.IsInRole("ADMIN");
     }
+
+    private static IEnumerable<string> UserEmails(ClaimsPrincipal user) => user.Claims
+        .Where(claim => claim.Type.Equals("email", StringComparison.OrdinalIgnoreCase) ||
+            claim.Type.Equals(ClaimTypes.Email, StringComparison.OrdinalIgnoreCase) ||
+            claim.Type.EndsWith("/emailaddress", StringComparison.OrdinalIgnoreCase))
+        .Select(claim => claim.Value)
+        .Where(value => !string.IsNullOrWhiteSpace(value));
 
     private static Guid? GetCorrelationId(HttpContext context) =>
         Guid.TryParse(context.Request.Headers["X-Correlation-ID"].FirstOrDefault(), out var value) ? value : null;

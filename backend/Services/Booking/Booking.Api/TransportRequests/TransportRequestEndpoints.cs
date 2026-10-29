@@ -11,6 +11,18 @@ public static class TransportRequestEndpoints
 {
     public static void MapTransportRequestEndpoints(this WebApplication app)
     {
+        var orders = app.MapGroup("/api/v1/orders").RequireAuthorization();
+        orders.MapGet("/{orderId:guid}", async (Guid orderId, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>
+        {
+            var role = principal.FindFirstValue("role");
+            if (role is not ("CUSTOMER" or "LOGISTICS_MANAGER" or "ADMIN")) return Results.Forbid();
+            var customerIdentityUserId = role == "CUSTOMER" ? GetUserId(principal) : (Guid?)null;
+            var order = await service.GetOrderStatusAsync(orderId, customerIdentityUserId, cancellationToken);
+            return order is null
+                ? Results.NotFound(ApiResponse<object>.Failure(40400, "Transport order was not found.", requestId: GetRequestId(context)))
+                : Results.Ok(ApiResponse<OrderStatusSummary>.Success(order, requestId: GetRequestId(context)));
+        }).WithName("GetTransportOrderStatus");
+
         var customer = app.MapGroup("/api/v1/transport-requests")
             .RequireAuthorization("Customer");
         customer.MapGet("/", async (int? page, int? pageSize, string? search, string? status, ClaimsPrincipal principal, ITransportRequestService service, HttpContext context, CancellationToken cancellationToken) =>

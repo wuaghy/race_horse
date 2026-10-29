@@ -68,7 +68,7 @@ public sealed class TransportRequest
             throw new InvalidOperationException("Can only request information for requests under review.");
         }
 
-        Status = "INFO_REQUESTED";
+        Status = "NEED_INFORMATION";
         ReviewReason = reason;
         UpdatedAt = DateTime.UtcNow;
         VersionNo++;
