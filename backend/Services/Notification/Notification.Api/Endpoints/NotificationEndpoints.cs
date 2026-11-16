@@ -18,12 +18,14 @@ public static class NotificationEndpoints
             [FromQuery] bool? unreadOnly,
             [FromQuery] int page,
             [FromQuery] int pageSize,
+            [FromQuery] string? search,
+            [FromQuery] string? sortDirection,
             INotificationService service,
             ClaimsPrincipal user,
             CancellationToken ct) =>
         {
             var userId = GetUserId(user);
-            var result = await service.GetUserNotificationsAsync(userId, unreadOnly, page == 0 ? 1 : page, pageSize == 0 ? 20 : pageSize, ct);
+            var result = await service.GetUserNotificationsAsync(userId, unreadOnly, page == 0 ? 1 : page, pageSize == 0 ? 20 : pageSize, search, sortDirection, ct);
             var pagination = new PaginationMeta
             {
                 Page = result.PageNumber,

@@ -35,6 +35,9 @@ public class Incident
     public DateTime OccurredAt { get; set; }
     public DateTime? ResolvedAt { get; set; }
     public string? ResolutionNote { get; set; }
+    public string? VeterinarianName { get; set; }
+    public string? VeterinarianContact { get; set; }
+    public string? TransportDecision { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

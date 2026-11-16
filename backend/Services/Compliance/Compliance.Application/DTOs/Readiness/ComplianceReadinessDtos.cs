@@ -32,3 +32,44 @@ public sealed record EvaluateComplianceReadinessRequest(
     Guid DestinationCountryId,
     IReadOnlyList<Guid> HorseIds,
     DateOnly? PlannedDepartureDate = null);
+
+public sealed record ComplianceRouteLegContext(
+    Guid RouteLegId,
+    Guid OriginCountryId,
+    Guid DestinationCountryId,
+    DateTime PlannedDepartureAt,
+    DateTime? PlannedArrivalAt);
+
+public sealed record EvaluateDispatchTripReadinessRequest(
+    Guid TripId,
+    IReadOnlyList<Guid> RequestIds,
+    IReadOnlyList<Guid> HorseIds,
+    IReadOnlyList<ComplianceRouteLegContext> RouteLegs);
+
+public sealed record DispatchComplianceRequirementResult(
+    Guid RouteLegId,
+    string RuleCode,
+    string DocumentTypeCode,
+    string TargetScope,
+    Guid? TargetEntityId,
+    bool IsMet,
+    string Status,
+    string? Notes);
+
+public sealed record DispatchClearanceRequirementResult(
+    Guid RouteLegId,
+    Guid CountryId,
+    string ClearanceType,
+    Guid? CaseId,
+    bool IsRequired,
+    bool IsMet,
+    string Status,
+    string? Notes);
+
+public sealed record DispatchComplianceReadinessResult(
+    Guid TripId,
+    bool IsReady,
+    IReadOnlyList<string> Blockers,
+    IReadOnlyList<DispatchComplianceRequirementResult> Requirements,
+    IReadOnlyList<DispatchClearanceRequirementResult> Clearances,
+    DateTime EvaluatedAt);

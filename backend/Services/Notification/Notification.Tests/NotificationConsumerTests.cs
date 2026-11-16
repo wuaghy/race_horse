@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -39,7 +40,8 @@ public class NotificationConsumerTests
         var consumer = new NotificationEventConsumer(
             scopeFactory,
             Options.Create(new RabbitMqOptions { Enabled = false }),
-            NullLogger<NotificationEventConsumer>.Instance);
+            NullLogger<NotificationEventConsumer>.Instance,
+            new ConfigurationBuilder().Build());
 
         var eventId = Guid.NewGuid();
         var eventPayload = JsonSerializer.Serialize(new
@@ -91,7 +93,8 @@ public class NotificationConsumerTests
         var consumer = new NotificationEventConsumer(
             scopeFactory,
             Options.Create(new RabbitMqOptions { Enabled = false }),
-            NullLogger<NotificationEventConsumer>.Instance);
+            NullLogger<NotificationEventConsumer>.Instance,
+            new ConfigurationBuilder().Build());
 
         var incidentId = Guid.NewGuid();
         var eventPayload = JsonSerializer.Serialize(new

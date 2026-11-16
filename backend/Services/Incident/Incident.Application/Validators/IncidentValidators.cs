@@ -84,5 +84,8 @@ public class ResolveIncidentRequestValidator : AbstractValidator<ResolveIncident
         RuleFor(x => x.ResolutionNote)
             .NotEmpty().WithMessage("ResolutionNote is required when resolving an incident.")
             .MaximumLength(4000).WithMessage("ResolutionNote cannot exceed 4000 characters.");
+        RuleFor(x => x.VeterinarianName).MaximumLength(200);
+        RuleFor(x => x.VeterinarianContact).MaximumLength(200);
+        RuleFor(x => x.TransportDecision).Must(x => x is null or "CONTINUE" or "TRANSFER" or "STOP").WithMessage("Invalid transport decision.");
     }
 }

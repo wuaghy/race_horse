@@ -213,16 +213,21 @@ public class IncidentServiceTests
         var incident = await service.CreateIncidentAsync(createReq, Guid.NewGuid());
         var resolverId = Guid.NewGuid();
 
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ResolveIncidentAsync(
+            incident.Id, new ResolveIncidentRequest("Horse assessed"), resolverId));
+
         // Act
         var resolved = await service.ResolveIncidentAsync(
             incident.Id,
-            new ResolveIncidentRequest("Administered hydration and rest for 30 minutes. Heart rate returned to normal."),
+            new ResolveIncidentRequest("Horse assessed and transport decision recorded.", "Demo veterinarian", "Contact on file", "CONTINUE"),
             resolverId);
 
         // Assert
         Assert.Equal("RESOLVED", resolved.Status);
         Assert.NotNull(resolved.ResolvedAt);
-        Assert.Contains("Administered hydration", resolved.ResolutionNote);
+        Assert.Contains("Horse assessed", resolved.ResolutionNote);
+        Assert.Equal("Demo veterinarian", resolved.VeterinarianName);
+        Assert.Equal("CONTINUE", resolved.TransportDecision);
 
         var resolveOutbox = await db.OutboxMessages.FirstOrDefaultAsync(o => o.AggregateId == incident.Id && o.EventType == "Incident.IncidentResolved");
         Assert.NotNull(resolveOutbox);

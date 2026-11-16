@@ -21,21 +21,27 @@ public static class DocumentEndpoints
             [FromQuery] Guid? tripId,
             [FromQuery] Guid? documentTypeId,
             [FromQuery] string? status,
+            ClaimsPrincipal user,
             IDocumentService service,
             CancellationToken ct) =>
         {
             var filter = new DocumentFilter(horseId, requestId, tripId, documentTypeId, status);
-            var result = await service.GetDocumentsAsync(filter, ct);
+            var customerUserId = GetCustomerUserId(user);
+            if (string.Equals(user.FindFirstValue("role"), "CUSTOMER", StringComparison.OrdinalIgnoreCase) && customerUserId is null) return Results.Unauthorized();
+            var result = await service.GetDocumentsAsync(filter, ct, customerUserId);
             return Results.Ok(ApiResponse<IReadOnlyList<DocumentDto>>.Success(result));
         })
         .WithName("GetDocuments");
 
         group.MapGet("/{id:guid}", async (
             Guid id,
+            ClaimsPrincipal user,
             IDocumentService service,
             CancellationToken ct) =>
         {
-            var result = await service.GetDocumentByIdAsync(id, ct);
+            var customerUserId = GetCustomerUserId(user);
+            if (string.Equals(user.FindFirstValue("role"), "CUSTOMER", StringComparison.OrdinalIgnoreCase) && customerUserId is null) return Results.Unauthorized();
+            var result = await service.GetDocumentByIdAsync(id, ct, customerUserId);
             return result is not null
                 ? Results.Ok(ApiResponse<DocumentDto>.Success(result))
                 : Results.NotFound(ApiResponse<object>.Failure(404, "Document not found."));
@@ -44,11 +50,14 @@ public static class DocumentEndpoints
 
         group.MapGet("/{id:guid}/file", async (
             Guid id,
+            ClaimsPrincipal user,
             IDocumentService service,
             IFileStorageService fileStorage,
             CancellationToken ct) =>
         {
-            var document = await service.GetDocumentByIdAsync(id, ct);
+            var customerUserId = GetCustomerUserId(user);
+            if (string.Equals(user.FindFirstValue("role"), "CUSTOMER", StringComparison.OrdinalIgnoreCase) && customerUserId is null) return Results.Unauthorized();
+            var document = await service.GetDocumentByIdAsync(id, ct, customerUserId);
             if (document is null) return Results.NotFound(ApiResponse<object>.Failure(404, "Document not found."));
 
             var stream = await fileStorage.DownloadFileAsync(document.FileUrl, ct);
@@ -88,6 +97,11 @@ public static class DocumentEndpoints
             if (file == null || file.Length == 0)
             {
                 return Results.BadRequest(ApiResponse<object>.Failure(400, "No file uploaded or file is empty."));
+            }
+
+            if (!expiryDate.HasValue)
+            {
+                return Results.UnprocessableEntity(ApiResponse<object>.Failure(422, "Enter the expiry date shown on the document before uploading it."));
             }
 
             var userId = TryGetUserId(user);
@@ -146,4 +160,9 @@ public static class DocumentEndpoints
 
         return claim is not null && Guid.TryParse(claim.Value, out var id) ? id : null;
     }
+
+    private static Guid? GetCustomerUserId(ClaimsPrincipal principal) =>
+        string.Equals(principal.FindFirstValue("role"), "CUSTOMER", StringComparison.OrdinalIgnoreCase)
+            ? TryGetUserId(principal)
+            : null;
 }

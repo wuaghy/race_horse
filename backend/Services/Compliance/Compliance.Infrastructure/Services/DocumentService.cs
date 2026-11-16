@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BuildingBlocks.Exceptions;
 using Compliance.Application.Abstractions;
 using Compliance.Application.DTOs.Documents;
 using Compliance.Application.Services;
@@ -17,7 +18,7 @@ public class DocumentService : IDocumentService
         _db = db;
     }
 
-    public async Task<IReadOnlyList<DocumentDto>> GetDocumentsAsync(DocumentFilter filter, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<DocumentDto>> GetDocumentsAsync(DocumentFilter filter, CancellationToken cancellationToken = default, Guid? uploadedByUserId = null)
     {
         var query = _db.Documents
             .Include(d => d.DocumentType)
@@ -25,23 +26,32 @@ public class DocumentService : IDocumentService
             .AsNoTracking()
             .AsQueryable();
 
-        if (filter.HorseId.HasValue) query = query.Where(d => d.HorseId == filter.HorseId.Value);
+        if (filter.HorseId.HasValue)
+        {
+            query = query.Where(d => d.HorseId == filter.HorseId.Value);
+
+            // A horse-only lookup is for reusable horse records. Request and trip
+            // evidence must be fetched through its matching entity scope instead.
+            if (!filter.RequestId.HasValue && !filter.TripId.HasValue)
+                query = query.Where(d => d.RequestId == null && d.TripId == null);
+        }
         if (filter.RequestId.HasValue) query = query.Where(d => d.RequestId == filter.RequestId.Value);
         if (filter.TripId.HasValue) query = query.Where(d => d.TripId == filter.TripId.Value);
         if (filter.DocumentTypeId.HasValue) query = query.Where(d => d.DocumentTypeId == filter.DocumentTypeId.Value);
         if (!string.IsNullOrWhiteSpace(filter.Status)) query = query.Where(d => d.Status == filter.Status.ToUpperInvariant());
+        if (uploadedByUserId.HasValue) query = query.Where(d => d.UploadedByUserId == uploadedByUserId.Value);
 
         var list = await query.OrderByDescending(d => d.UploadedAt).ToListAsync(cancellationToken);
         return list.Select(MapDocumentToDto).ToList();
     }
 
-    public async Task<DocumentDto?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<DocumentDto?> GetDocumentByIdAsync(Guid id, CancellationToken cancellationToken = default, Guid? uploadedByUserId = null)
     {
         var item = await _db.Documents
             .Include(d => d.DocumentType)
             .Include(d => d.Reviews)
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(d => d.Id == id && (!uploadedByUserId.HasValue || d.UploadedByUserId == uploadedByUserId.Value), cancellationToken);
 
         return item is null ? null : MapDocumentToDto(item);
     }
@@ -59,18 +69,20 @@ public class DocumentService : IDocumentService
             throw new KeyNotFoundException($"DocumentType with ID {request.DocumentTypeId} not found.");
         }
 
+        if (!request.ExpiryDate.HasValue)
+        {
+            throw new BusinessRuleException("Enter the expiry date shown on the document before uploading it.", "DOCUMENT_EXPIRY_REQUIRED", "expiryDate");
+        }
+
         // Generate unique DocumentNo: DOC-YYYYMMDD-XXXX
         var datePrefix = DateTime.UtcNow.ToString("yyyyMMdd");
         var randomSuffix = Random.Shared.Next(1000, 9999);
         var documentNo = $"DOC-{datePrefix}-{randomSuffix}";
 
-        // Compute expiry date if not provided and default validity days are configured
+        // Expiry is recorded only when the uploader provides it. A document's
+        // validity cannot be inferred from its upload date or file contents.
         var issueDate = request.IssueDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
         var expiryDate = request.ExpiryDate;
-        if (!expiryDate.HasValue && docType.DefaultValidityDays.HasValue)
-        {
-            expiryDate = issueDate.AddDays(docType.DefaultValidityDays.Value);
-        }
 
         var document = new Document
         {
@@ -125,6 +137,11 @@ public class DocumentService : IDocumentService
 
         var document = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId, cancellationToken);
         if (document is null) return null;
+
+        if (document.Status is not (DocumentStatus.Uploaded or DocumentStatus.UnderReview or DocumentStatus.NeedAdditionalInfo))
+        {
+            throw new BusinessRuleException("Only uploaded, under-review, or returned documents can be reviewed.", "DOCUMENT_STATE_INVALID");
+        }
 
         var oldState = document.Status;
         document.Status = targetStatus;

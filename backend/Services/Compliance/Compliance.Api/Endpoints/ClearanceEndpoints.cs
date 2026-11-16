@@ -14,6 +14,29 @@ public static class ClearanceEndpoints
             .WithTags("Compliance Clearance Cases")
             .RequireAuthorization();
 
+        group.MapGet("/cases", async (
+            [FromQuery] string? search,
+            [FromQuery] string? status,
+            [FromQuery] Guid? countryId,
+            [FromQuery] string? sortBy,
+            [FromQuery] string? sortDirection,
+            IClearanceService service,
+            CancellationToken ct) =>
+        {
+            IReadOnlyList<ClearanceCaseDto> result;
+            try
+            {
+                result = await service.GetAllClearanceCasesAsync(search, status, countryId, sortBy, sortDirection, ct);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(ApiResponse<object>.Failure(400, ex.Message));
+            }
+            return Results.Ok(ApiResponse<IReadOnlyList<ClearanceCaseDto>>.Success(result));
+        })
+        .WithName("GetAllClearanceCases")
+        .RequireAuthorization(policy => policy.RequireRole("COMPLIANCE_OFFICER", "ADMIN", "LOGISTICS_MANAGER", "TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR"));
+
         group.MapGet("/cases/trip/{tripId:guid}", async (
             Guid tripId,
             IClearanceService service,

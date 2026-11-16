@@ -4,7 +4,7 @@ namespace Notification.Application.Services;
 
 public interface INotificationService
 {
-    Task<PagedResult<NotificationDto>> GetUserNotificationsAsync(Guid userId, bool? unreadOnly, int page, int pageSize, CancellationToken ct = default);
+    Task<PagedResult<NotificationDto>> GetUserNotificationsAsync(Guid userId, bool? unreadOnly, int page, int pageSize, string? search = null, string? sortDirection = null, CancellationToken ct = default);
     Task<UnreadCountDto> GetUnreadCountAsync(Guid userId, CancellationToken ct = default);
     Task<bool> MarkAsReadAsync(Guid notificationId, Guid userId, CancellationToken ct = default);
     Task<int> MarkAllAsReadAsync(Guid userId, CancellationToken ct = default);

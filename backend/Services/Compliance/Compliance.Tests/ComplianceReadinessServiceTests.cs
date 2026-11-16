@@ -165,4 +165,95 @@ public class ComplianceReadinessServiceTests
         Assert.Single(outbox);
         Assert.Equal("Compliance.ComplianceReady", outbox[0].EventType);
     }
+
+    [Fact]
+    public async Task EvaluateDispatchTripReadiness_RequiresRequestDocumentAndRouteLegClearance()
+    {
+        using var db = TestDbContextFactory.Create();
+        var service = new ComplianceReadinessService(db, NullLogger<ComplianceReadinessService>.Instance);
+        var tripId = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+        var horseId = Guid.NewGuid();
+        var routeLegId = Guid.NewGuid();
+        var originCountryId = Guid.NewGuid();
+        var destinationCountryId = Guid.NewGuid();
+        var departureAt = DateTime.UtcNow.AddDays(1);
+        var targetDate = DateOnly.FromDateTime(departureAt);
+        var documentType = new DocumentType
+        {
+            Code = "IMPORT_PERMIT",
+            Name = "Import permit",
+            Scope = DocumentScope.Request,
+            Active = true
+        };
+        var rule = new RegulationRule
+        {
+            RuleCode = "IMPORT_CLEARANCE",
+            OriginCountryId = originCountryId,
+            DestinationCountryId = destinationCountryId,
+            Title = "Import requirements",
+            CustomsRequired = true,
+            EffectiveFrom = targetDate.AddDays(-1),
+            Active = true,
+            Requirements =
+            [
+                new RegulationDocumentRequirement
+                {
+                    DocumentTypeId = documentType.Id,
+                    DocumentType = documentType,
+                    Required = true
+                }
+            ]
+        };
+        db.RegulationRules.Add(rule);
+        db.Documents.Add(new Document
+        {
+            DocumentTypeId = documentType.Id,
+            DocumentType = documentType,
+            RequestId = requestId,
+            UploadedByUserId = Guid.NewGuid(),
+            DocumentNo = "PERMIT-1",
+            FileName = "permit.pdf",
+            FileUrl = "local/permit.pdf",
+            Status = DocumentStatus.Approved,
+            ExpiryDate = targetDate.AddDays(30)
+        });
+        await db.SaveChangesAsync();
+
+        var request = new EvaluateDispatchTripReadinessRequest(
+            tripId,
+            [requestId],
+            [horseId],
+            [new ComplianceRouteLegContext(routeLegId, originCountryId, destinationCountryId, departureAt, null)]);
+
+        var missingClearance = await service.EvaluateDispatchTripReadinessAsync(request);
+
+        Assert.False(missingClearance.IsReady);
+        Assert.Contains(missingClearance.Blockers, blocker => blocker.Contains("required CUSTOMS clearance is MISSING", StringComparison.Ordinal));
+        Assert.Single(missingClearance.Requirements);
+        Assert.True(missingClearance.Requirements[0].IsMet);
+        Assert.Empty(db.OutboxMessages);
+
+        db.ClearanceCases.Add(new ClearanceCase
+        {
+            CaseNo = "CLR-TEST-1",
+            TripId = tripId,
+            RouteLegId = routeLegId,
+            CountryId = destinationCountryId,
+            ClearanceType = ClearanceTypes.Customs,
+            AuthorityName = "Customs office",
+            Status = ClearanceStatus.Approved
+        });
+        await db.SaveChangesAsync();
+
+        var ready = await service.EvaluateDispatchTripReadinessAsync(request);
+
+        Assert.True(ready.IsReady);
+        Assert.Empty(ready.Blockers);
+        Assert.Single(ready.Clearances);
+        Assert.True(ready.Clearances[0].IsMet);
+        var outbox = db.OutboxMessages.ToList();
+        Assert.Single(outbox);
+        Assert.Equal("Compliance.ComplianceReady", outbox[0].EventType);
+    }
 }

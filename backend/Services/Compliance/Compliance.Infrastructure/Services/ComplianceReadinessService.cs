@@ -176,6 +176,154 @@ public class ComplianceReadinessService : IComplianceReadinessService
         return result;
     }
 
+    public async Task<DispatchComplianceReadinessResult> EvaluateDispatchTripReadinessAsync(
+        EvaluateDispatchTripReadinessRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var blockers = new List<string>();
+        var requirementResults = new List<DispatchComplianceRequirementResult>();
+        var clearanceResults = new List<DispatchClearanceRequirementResult>();
+        var routeLegs = request.RouteLegs.OrderBy(leg => leg.PlannedDepartureAt).ToArray();
+        if (routeLegs.Length == 0)
+            blockers.Add("Trip has no active route legs to evaluate.");
+
+        var requestIds = request.RequestIds.Where(id => id != Guid.Empty).Distinct().ToArray();
+        var horseIds = request.HorseIds.Where(id => id != Guid.Empty).Distinct().ToArray();
+        if (requestIds.Length == 0) blockers.Add("Trip has no request IDs for request-scoped document checks.");
+        if (horseIds.Length == 0) blockers.Add("Trip has no horse IDs for horse-scoped document checks.");
+        var rules = await _db.RegulationRules
+            .Include(rule => rule.Requirements).ThenInclude(requirement => requirement.DocumentType)
+            .AsNoTracking()
+            .Where(rule => rule.Active)
+            .ToListAsync(cancellationToken);
+        var documents = await _db.Documents.Include(document => document.DocumentType)
+            .AsNoTracking()
+            .Where(document => document.TripId == request.TripId ||
+                (document.RequestId.HasValue && requestIds.Contains(document.RequestId.Value)) ||
+                (document.HorseId.HasValue && horseIds.Contains(document.HorseId.Value)))
+            .ToListAsync(cancellationToken);
+        var routeLegIds = routeLegs.Select(leg => leg.RouteLegId).ToArray();
+        var clearanceCases = routeLegIds.Length == 0
+            ? []
+            : await _db.ClearanceCases.AsNoTracking()
+                .Where(clearanceCase => clearanceCase.TripId == request.TripId &&
+                    clearanceCase.RouteLegId.HasValue && routeLegIds.Contains(clearanceCase.RouteLegId.Value))
+                .ToListAsync(cancellationToken);
+        var configuredLegCount = 0;
+        var seenClearanceRequirements = new HashSet<(Guid RouteLegId, Guid CountryId, string ClearanceType)>();
+
+        foreach (var leg in routeLegs)
+        {
+            var targetDate = DateOnly.FromDateTime(leg.PlannedDepartureAt);
+            var applicableRules = rules.Where(rule => rule.OriginCountryId == leg.OriginCountryId &&
+                rule.DestinationCountryId == leg.DestinationCountryId && rule.EffectiveFrom <= targetDate &&
+                (!rule.EffectiveTo.HasValue || rule.EffectiveTo.Value >= targetDate)).ToArray();
+            if (applicableRules.Length == 0)
+            {
+                blockers.Add($"Route leg {leg.RouteLegId} has no active regulation rule for its country pair and departure date.");
+                continue;
+            }
+            configuredLegCount++;
+
+            foreach (var rule in applicableRules)
+            {
+                foreach (var requirement in rule.Requirements.Where(item => item.Required && item.DocumentType is not null && item.DocumentType.Active))
+                {
+                    var documentType = requirement.DocumentType!;
+                    if (documentType.Scope == DocumentScope.Horse)
+                    {
+                        foreach (var horseId in horseIds)
+                        {
+                            var latest = documents.Where(document => document.HorseId == horseId &&
+                                    document.DocumentTypeId == requirement.DocumentTypeId &&
+                                    (!document.RequestId.HasValue || requestIds.Contains(document.RequestId.Value)))
+                                .OrderByDescending(document => document.UploadedAt).FirstOrDefault();
+                            var check = EvaluateItem(rule, requirement, documentType, DocumentScope.Horse, horseId, latest, targetDate);
+                            requirementResults.Add(new DispatchComplianceRequirementResult(leg.RouteLegId, rule.RuleCode,
+                                documentType.Code, DocumentScope.Horse, horseId, check.IsMet, check.Status, check.Notes));
+                            if (!check.IsMet) blockers.Add($"Route leg {leg.RouteLegId}: horse {horseId} requires {documentType.Code} ({check.Status}).");
+                        }
+                    }
+                    else if (documentType.Scope == DocumentScope.Request)
+                    {
+                        foreach (var requestId in requestIds)
+                        {
+                            var latest = documents.Where(document => document.RequestId == requestId &&
+                                    document.DocumentTypeId == requirement.DocumentTypeId)
+                                .OrderByDescending(document => document.UploadedAt).FirstOrDefault();
+                            var check = EvaluateItem(rule, requirement, documentType, DocumentScope.Request, requestId, latest, targetDate);
+                            requirementResults.Add(new DispatchComplianceRequirementResult(leg.RouteLegId, rule.RuleCode,
+                                documentType.Code, DocumentScope.Request, requestId, check.IsMet, check.Status, check.Notes));
+                            if (!check.IsMet) blockers.Add($"Route leg {leg.RouteLegId}: request {requestId} requires {documentType.Code} ({check.Status}).");
+                        }
+                    }
+                    else
+                    {
+                        var latest = documents.Where(document => document.TripId == request.TripId &&
+                                document.DocumentTypeId == requirement.DocumentTypeId)
+                            .OrderByDescending(document => document.UploadedAt).FirstOrDefault();
+                        var check = EvaluateItem(rule, requirement, documentType, DocumentScope.Trip, request.TripId, latest, targetDate);
+                        requirementResults.Add(new DispatchComplianceRequirementResult(leg.RouteLegId, rule.RuleCode,
+                            documentType.Code, DocumentScope.Trip, request.TripId, check.IsMet, check.Status, check.Notes));
+                        if (!check.IsMet) blockers.Add($"Route leg {leg.RouteLegId}: trip requires {documentType.Code} ({check.Status}).");
+                    }
+                }
+
+                var requiredClearances = new List<string>();
+                if (rule.CustomsRequired) requiredClearances.Add(ClearanceTypes.Customs);
+                if (rule.QuarantineRequired) requiredClearances.Add(ClearanceTypes.Quarantine);
+                if (rule.InspectionRequired) requiredClearances.Add(ClearanceTypes.Inspection);
+                foreach (var clearanceType in requiredClearances)
+                {
+                    var key = (leg.RouteLegId, leg.DestinationCountryId, clearanceType);
+                    if (!seenClearanceRequirements.Add(key)) continue;
+                    var matching = clearanceCases.Where(item => item.RouteLegId == leg.RouteLegId &&
+                            item.CountryId == leg.DestinationCountryId && item.ClearanceType == clearanceType)
+                        .OrderByDescending(item => item.UpdatedAt).FirstOrDefault();
+                    var met = matching?.Status is ClearanceStatus.Approved or ClearanceStatus.Completed;
+                    var status = matching?.Status ?? "MISSING";
+                    var notes = met ? "Required clearance approved." : matching is null
+                        ? "Create and approve the required clearance case before dispatch."
+                        : $"Clearance case is {matching.Status}; APPROVED or COMPLETED is required.";
+                    clearanceResults.Add(new DispatchClearanceRequirementResult(leg.RouteLegId, leg.DestinationCountryId,
+                        clearanceType, matching?.Id, true, met, status, notes));
+                    if (!met) blockers.Add($"Route leg {leg.RouteLegId}: required {clearanceType} clearance is {status}.");
+                }
+            }
+        }
+
+        var isReady = configuredLegCount == routeLegs.Length && routeLegs.Length > 0 && blockers.Count == 0;
+        if (isReady)
+        {
+            var existingReadyEvent = await _db.OutboxMessages.AnyAsync(message =>
+                message.EventType == "Compliance.ComplianceReady" && message.AggregateType == "TripReadiness" &&
+                message.AggregateId == request.TripId, cancellationToken);
+            if (!existingReadyEvent)
+            {
+                var firstLeg = routeLegs[0];
+                var lastLeg = routeLegs[^1];
+                var occurredAt = DateTime.UtcNow;
+                var readyEvent = new ComplianceComplianceReadyEvent
+                {
+                    CorrelationId = Guid.NewGuid(),
+                    OccurredAt = occurredAt,
+                    Data = new ComplianceComplianceReadyData(request.TripId, null, firstLeg.OriginCountryId,
+                        lastLeg.DestinationCountryId, occurredAt, "All route document and clearance requirements are satisfied.")
+                };
+                _db.OutboxMessages.Add(new OutboxMessage
+                {
+                    Id = Guid.NewGuid(), EventType = readyEvent.EventType, AggregateType = "TripReadiness",
+                    AggregateId = request.TripId, Payload = JsonSerializer.Serialize(readyEvent),
+                    CorrelationId = readyEvent.CorrelationId, OccurredAt = readyEvent.OccurredAt, Status = "PENDING"
+                });
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        return new DispatchComplianceReadinessResult(request.TripId, isReady, blockers.Distinct().ToArray(),
+            requirementResults, clearanceResults, DateTime.UtcNow);
+    }
+
     private static ComplianceReadinessCheckItem EvaluateItem(
         RegulationRule rule,
         RegulationDocumentRequirement req,

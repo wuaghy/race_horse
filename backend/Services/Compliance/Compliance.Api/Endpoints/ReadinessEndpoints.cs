@@ -11,18 +11,18 @@ public static class ReadinessEndpoints
     {
         var group = app.MapGroup("/api/v1/compliance/readiness")
             .WithTags("Compliance Readiness Engine")
-            .RequireAuthorization("TransportSpecialist");
+            .RequireAuthorization("ComplianceReadiness");
 
         group.MapPost("/evaluate", async (
-            [FromBody] EvaluateComplianceReadinessRequest request,
+            [FromBody] EvaluateDispatchTripReadinessRequest request,
             IComplianceReadinessService service,
             CancellationToken ct) =>
         {
-            var result = await service.EvaluateTripReadinessAsync(request, ct);
-            return Results.Ok(ApiResponse<ComplianceReadinessResultDto>.Success(result));
+            var result = await service.EvaluateDispatchTripReadinessAsync(request, ct);
+            return Results.Ok(ApiResponse<DispatchComplianceReadinessResult>.Success(result));
         })
         .WithName("EvaluateComplianceReadiness")
-        .WithSummary("Evaluates if a trip has satisfied all document compliance requirements for departure. If ready, emits Compliance.ComplianceReady event.");
+        .WithSummary("Evaluates request and horse documents plus route-leg clearance requirements for dispatch readiness.");
 
         group.MapGet("/trip/{tripId:guid}", async (
             Guid tripId,

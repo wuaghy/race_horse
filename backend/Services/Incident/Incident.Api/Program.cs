@@ -40,7 +40,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("IncidentRead", policy => policy.RequireRole("DRIVER_ESCORT", "DRIVER", "ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("IncidentReport", policy => policy.RequireRole("DRIVER_ESCORT", "DRIVER", "ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("IncidentManage", policy => policy.RequireRole("FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+});
 
 var app = builder.Build();
 

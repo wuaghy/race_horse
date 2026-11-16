@@ -6,6 +6,7 @@ public class ClearanceCase
     public string CaseNo { get; set; } = string.Empty;
     public Guid TripId { get; set; }
     public Guid? RouteLegId { get; set; }
+    public string ClearanceType { get; set; } = ClearanceTypes.Customs;
     public Guid CountryId { get; set; }
     public Guid? BorderPointId { get; set; }
     public string AuthorityName { get; set; } = string.Empty;
@@ -21,6 +22,14 @@ public class ClearanceCase
     public int VersionNo { get; set; } = 1;
 
     public ICollection<ClearanceCaseDocument> ClearanceCaseDocuments { get; set; } = new List<ClearanceCaseDocument>();
+}
+
+public static class ClearanceTypes
+{
+    public const string Customs = "CUSTOMS";
+    public const string Quarantine = "QUARANTINE";
+    public const string Inspection = "INSPECTION";
+    public static readonly string[] All = [Customs, Quarantine, Inspection];
 }
 
 public static class ClearanceStatus

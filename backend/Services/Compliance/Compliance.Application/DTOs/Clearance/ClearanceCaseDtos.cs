@@ -15,6 +15,7 @@ public sealed record ClearanceCaseDto(
     string CaseNo,
     Guid TripId,
     Guid? RouteLegId,
+    string ClearanceType,
     Guid CountryId,
     Guid? BorderPointId,
     string AuthorityName,
@@ -38,7 +39,8 @@ public sealed record CreateClearanceCaseRequest(
     string AuthorityName,
     string? ReferenceNumber = null,
     string? Notes = null,
-    IReadOnlyList<Guid>? DocumentIds = null);
+    IReadOnlyList<Guid>? DocumentIds = null,
+    string ClearanceType = "CUSTOMS");
 
 public sealed record ReviewClearanceCaseRequest(
     string Status, // APPROVED, REJECTED, NEED_ADDITIONAL_INFO, COMPLETED

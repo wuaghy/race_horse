@@ -4,10 +4,13 @@ using BuildingBlocks.Middleware;
 using Compliance.Api.Endpoints;
 using Compliance.Infrastructure;
 using Compliance.Infrastructure.Persistence;
+using Compliance.Api.Grpc;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddGrpc();
 
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
@@ -65,6 +68,7 @@ else
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("TransportSpecialist", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("ComplianceReadiness", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "COMPLIANCE_OFFICER", "LOGISTICS_MANAGER", "ADMIN"));
     options.AddPolicy("ComplianceOfficer", policy => policy.RequireRole("COMPLIANCE_OFFICER", "ADMIN"));
     options.AddPolicy("ComplianceAccess", policy => policy.RequireRole("CUSTOMER", "TRANSPORT_SPECIALIST", "LOGISTICS_MANAGER", "COMPLIANCE_OFFICER", "ADMIN"));
 });
@@ -87,6 +91,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapGrpcService<ComplianceQueryGrpcService>();
 
 // Health check endpoint
 app.MapServiceHealth("compliance");
