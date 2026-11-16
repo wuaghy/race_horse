@@ -54,6 +54,7 @@ services:
       DemoData__Password: ${DEMO_DATA_PASSWORD:-}
       ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=IdentityDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      ComplianceGrpc__Address: http://compliance-api:8081
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       Jwt__AccessTokenMinutes: ${JWT_ACCESS_TOKEN_MINUTES:-15}
@@ -87,8 +88,17 @@ services:
       RabbitMQ__Enabled: "true"
       RabbitMQ__ExchangeName: racehorse.events
       RabbitMQ__BookingQueueName: booking-service.inbox
+      PlanningGrpc__Address: http://planning-api:8081
+      ComplianceGrpc__Address: http://compliance-api:8081
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
+      PayOS__Enabled: ${PAYOS_ENABLED:-false}
+      PayOS__ClientId: ${PAYOS_CLIENT_ID:-}
+      PayOS__ApiKey: ${PAYOS_API_KEY:-}
+      PayOS__ChecksumKey: ${PAYOS_CHECKSUM_KEY:-}
+      PayOS__WebhookUrl: ${PAYOS_WEBHOOK_URL:-http://localhost:8082/api/v1/payments/payos/webhook}
+      PayOS__SuccessUrl: ${PAYOS_SUCCESS_URL:-http://localhost:5173/payment/success}
+      PayOS__CancelUrl: ${PAYOS_CANCEL_URL:-http://localhost:5173/payment/cancel}
     ports:
       - "${BOOKING_PORT:-8082}:8080"
     networks:
@@ -105,7 +115,10 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      ASPNETCORE_HTTP_PORTS: "8080"
+      Kestrel__Endpoints__Http__Url: http://+:8080
+      Kestrel__Endpoints__Http__Protocols: Http1
+      Kestrel__Endpoints__Grpc__Url: http://+:8081
+      Kestrel__Endpoints__Grpc__Protocols: Http2
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__ComplianceDb: "Server=sqlserver,1433;Database=ComplianceDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
@@ -117,6 +130,8 @@ services:
       Storage__LocalDirectory: /app/App_Data/compliance-files
     ports:
       - "${COMPLIANCE_PORT:-8083}:8080"
+    expose:
+      - "8081"
     volumes:
       - compliance_files:/app/App_Data/compliance-files
     networks:
@@ -140,6 +155,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__PlanningDb: "Server=sqlserver,1433;Database=PlanningDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
+      ComplianceGrpc__Address: http://compliance-api:8081
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
       RabbitMQ__HostName: rabbitmq
@@ -147,6 +163,8 @@ services:
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
       RabbitMQ__ExchangeName: racehorse.events
+      "RouteTransportModes__66666666-6666-4666-8666-666666666661>66666666-6666-4666-8666-666666666662__0": ROAD
+      "RouteTransportModes__66666666-6666-4666-8666-666666666662>66666666-6666-4666-8666-666666666661__0": ROAD
     expose:
       - "8081"
     networks:
@@ -194,6 +212,7 @@ services:
       ASPNETCORE_HTTP_PORTS: "8080"
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__HandoverDb: "Server=sqlserver,1433;Database=HandoverDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
+      PlanningApi__BaseUrl: http://planning-api:8080/
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
       Jwt__Issuer: ${JWT_ISSUER:-racehorse-identity}
       Jwt__Audience: ${JWT_AUDIENCE:-racehorse-api}
@@ -261,6 +280,15 @@ services:
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS}
       RabbitMQ__ExchangeName: racehorse.events
+      Email__Enabled: ${EMAIL_ENABLED:-false}
+      Email__Host: ${EMAIL_HOST:-}
+      Email__Port: ${EMAIL_PORT:-587}
+      Email__UserName: ${EMAIL_USERNAME:-}
+      Email__Password: ${EMAIL_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-}
+      Email__FromName: ${EMAIL_FROM_NAME:-EquiRoute}
+      Email__EnableSsl: ${EMAIL_ENABLE_SSL:-true}
+      Portal__BaseUrl: ${PORTAL_BASE_URL:-http://localhost:5173}
     ports:
       - "${NOTIFICATION_PORT:-8087}:8080"
     networks:

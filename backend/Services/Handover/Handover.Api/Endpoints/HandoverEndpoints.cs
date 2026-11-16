@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Net.Http.Headers;
 using BuildingBlocks.Api;
 using BuildingBlocks.Exceptions;
 using Handover.Application.Abstractions;
@@ -31,18 +32,27 @@ public static class HandoverEndpoints
             [FromQuery] string? status,
             [FromQuery] int? page,
             [FromQuery] int? pageSize,
+            [FromQuery] string? search,
+            [FromQuery] string? sortBy,
+            [FromQuery] string? sortDirection,
+            [FromQuery] Guid[]? horseIds,
             ClaimsPrincipal user,
             IHandoverService service,
             CancellationToken ct) =>
         {
             var actorId = GetActorId(user);
             if (actorId is null) return Results.Unauthorized();
-            var receiverEmail = user.IsInRole("CUSTOMER") ? user.FindFirst("email")?.Value : null;
-            var createdByUserId = user.IsInRole("DRIVER_ESCORT") ? actorId : null;
+            var isDriver = user.IsInRole("DRIVER") || user.IsInRole("ESCORT") || user.IsInRole("DRIVER_ESCORT");
+            var createdByUserId = isDriver ? actorId : null;
             var result = await service.GetHandoversAsync(new HandoverFilter(
                 tripId, status, page ?? 0, pageSize ?? 20,
                 CreatedByUserId: createdByUserId,
-                ReceiverEmail: receiverEmail), ct);
+                CustomerUserId: user.IsInRole("CUSTOMER") ? actorId : null,
+                CustomerEmail: user.IsInRole("CUSTOMER") ? user.FindFirstValue("email") ?? user.FindFirstValue(ClaimTypes.Email) : null,
+                Search: search,
+                SortBy: sortBy,
+                SortDirection: sortDirection,
+                HorseIds: horseIds), ct);
             var pagination = new PaginationMeta
             {
                 Page = result.Page,
@@ -66,6 +76,38 @@ public static class HandoverEndpoints
             return Results.Ok(ApiResponse<HandoverDto>.Success(handover));
         }).WithName("GetHandoverByTripId");
 
+        read.MapGet("/assigned-trip/{tripId:guid}", async (
+            Guid tripId,
+            ClaimsPrincipal user,
+            HttpContext context,
+            IConfiguration configuration,
+            IHttpClientFactory clients,
+            IHandoverService service,
+            CancellationToken ct) =>
+        {
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            var isDriver = user.IsInRole("DRIVER") || user.IsInRole("ESCORT") || user.IsInRole("DRIVER_ESCORT");
+            if (!isDriver) return Results.Forbid();
+
+            var planningBaseUrl = configuration["PlanningApi:BaseUrl"] ?? "http://planning-api:8080/";
+            var planning = clients.CreateClient();
+            planning.BaseAddress = new Uri(planningBaseUrl, UriKind.Absolute);
+            using var assignmentRequest = new HttpRequestMessage(HttpMethod.Get, $"api/v1/my-trips/{tripId}/orders");
+            if (AuthenticationHeaderValue.TryParse(context.Request.Headers.Authorization.FirstOrDefault(), out var authorization))
+                assignmentRequest.Headers.Authorization = authorization;
+            using var assignmentResponse = await planning.SendAsync(assignmentRequest, ct);
+            if (!assignmentResponse.IsSuccessStatusCode)
+            {
+                if ((int)assignmentResponse.StatusCode is 401 or 403 or 404 or 422) return Results.Forbid();
+                return Results.Problem("Could not verify this trip assignment with Planning.", statusCode: 503);
+            }
+
+            var handover = await service.GetByTripIdAsync(tripId, ct);
+            if (handover is null) return Results.NotFound(ApiResponse<object>.Failure(40400, "No handover record exists for this trip yet."));
+            return Results.Ok(ApiResponse<HandoverDto>.Success(handover));
+        }).WithName("GetAssignedTripHandover");
+
         read.MapGet("/{id:guid}", async (Guid id, ClaimsPrincipal user, IHandoverService service, CancellationToken ct) =>
         {
             var actorId = GetActorId(user);
@@ -86,6 +128,37 @@ public static class HandoverEndpoints
             var check = await service.EvaluateCompletionAsync(id, ct);
             return Results.Ok(ApiResponse<HandoverCompletionCheckDto>.Success(check));
         }).WithName("GetHandoverCompletionCheck");
+
+        read.MapGet("/{id:guid}/audit", async (
+            Guid id,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
+            ClaimsPrincipal user,
+            IHandoverService service,
+            IHandoverDbContext db,
+            CancellationToken ct) =>
+        {
+            var actorId = GetActorId(user);
+            if (actorId is null) return Results.Unauthorized();
+            var handover = await service.GetByIdAsync(id, ct);
+            if (handover is null) return Results.NotFound(ApiResponse<object>.Failure(40400, "Handover record not found."));
+            if (!CanAccessHandover(user, handover)) return Results.Forbid();
+
+            var pageValue = page ?? 0;
+            var size = pageSize ?? 20;
+            if (pageValue < 0 || size is < 1 or > 100)
+                return Results.UnprocessableEntity(ApiResponse<object>.Failure(42200, "page must be zero or greater and pageSize must be between 1 and 100."));
+            var query = db.AuditLogs.AsNoTracking().Where(x => x.EntityId == id && x.EntityType == "HandoverRecord");
+            var total = await query.LongCountAsync(ct);
+            var events = await query.OrderByDescending(x => x.OccurredAt).Skip(pageValue * size).Take(size).ToListAsync(ct);
+            return Results.Ok(ApiResponse<IReadOnlyList<HandoverAuditLog>>.Success(events, new PaginationMeta
+            {
+                Page = pageValue,
+                PageSize = size,
+                TotalItems = total,
+                TotalPages = (int)Math.Ceiling(total / (double)size)
+            }));
+        }).WithName("GetHandoverAuditHistory");
 
         read.MapGet("/{id:guid}/signature", async (
             Guid id,
@@ -298,7 +371,7 @@ public static class HandoverEndpoints
             }
         }).DisableAntiforgery().WithName("UploadHandoverSignature");
 
-        var accept = app.MapGroup("/api/v1/handovers").WithTags("Handovers").RequireAuthorization("HandoverAccept");
+        var accept = app.MapGroup("/api/v1/handovers").WithTags("Handovers").RequireAuthorization("HandoverWrite");
 
         accept.MapPost("/{id:guid}/horses/{horseId:guid}/accept", async (
             Guid id,
@@ -316,7 +389,7 @@ public static class HandoverEndpoints
             if (!CanAccessHandover(user, handover)) return Results.Forbid();
             var result = await service.AcceptHorseAsync(id, horseId, actorId.Value, request ?? new AcceptHandoverHorseRequest(), GetCorrelationId(context), ct);
             return Results.Ok(ApiResponse<HandoverDto>.Success(result, "Horse accepted for handover."));
-        }).WithName("AcceptHandoverHorse");
+        }).RequireAuthorization("HandoverCustomerReview").WithName("AcceptHandoverHorse");
 
         accept.MapPost("/{id:guid}/horses/{horseId:guid}/dispute", async (
             Guid id,
@@ -334,7 +407,7 @@ public static class HandoverEndpoints
             if (!CanAccessHandover(user, handover)) return Results.Forbid();
             var result = await service.DisputeHorseAsync(id, horseId, actorId.Value, request, GetCorrelationId(context), ct);
             return Results.Ok(ApiResponse<HandoverDto>.Success(result, "Horse disputed on handover."));
-        }).WithName("DisputeHandoverHorse");
+        }).RequireAuthorization("HandoverCustomerReview").WithName("DisputeHandoverHorse");
 
         var manage = app.MapGroup("/api/v1/handovers").WithTags("Handovers").RequireAuthorization("HandoverManage");
 
@@ -504,29 +577,6 @@ public static class HandoverEndpoints
                 new FinancialDashboardDto(start, end, completed, costs, revenue)));
         }).WithName("GetHandoverFinancialDashboard");
 
-        operations.MapGet("/{id:guid}/audit", async (
-            Guid id,
-            [FromQuery] int? page,
-            [FromQuery] int? pageSize,
-            IHandoverDbContext db,
-            CancellationToken ct) =>
-        {
-            var pageValue = page ?? 0;
-            var size = pageSize ?? 20;
-            if (pageValue < 0 || size is < 1 or > 100)
-                return Results.UnprocessableEntity(ApiResponse<object>.Failure(42200, "page must be zero or greater and pageSize must be between 1 and 100."));
-            var query = db.AuditLogs.AsNoTracking().Where(x => x.EntityId == id && x.EntityType == "HandoverRecord");
-            var total = await query.LongCountAsync(ct);
-            var events = await query.OrderByDescending(x => x.OccurredAt).Skip(pageValue * size).Take(size).ToListAsync(ct);
-            return Results.Ok(ApiResponse<IReadOnlyList<HandoverAuditLog>>.Success(events, new PaginationMeta
-            {
-                Page = pageValue,
-                PageSize = size,
-                TotalItems = total,
-                TotalPages = (int)Math.Ceiling(total / (double)size)
-            }));
-        }).WithName("GetHandoverAuditHistory");
-
         return app;
     }
 
@@ -537,18 +587,24 @@ public static class HandoverEndpoints
         var extension = Path.GetExtension(file.FileName);
         if (!SupportedTypes.TryGetValue(extension, out var contentType))
             return ("Only JPG, PNG, WebP, and PDF files are supported.", null, null);
-        if (!string.Equals(file.ContentType, contentType, StringComparison.OrdinalIgnoreCase))
+        var declaredType = file.ContentType?.Trim();
+        var isGenericPdfType = extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase) &&
+            (string.IsNullOrWhiteSpace(declaredType) || string.Equals(declaredType, "application/octet-stream", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(declaredType, "application/x-pdf", StringComparison.OrdinalIgnoreCase));
+        if (!string.Equals(declaredType, contentType, StringComparison.OrdinalIgnoreCase) && !isGenericPdfType)
             return ("File extension and content type do not match.", null, null);
 
         await using var stream = file.OpenReadStream();
-        var header = new byte[12];
+        var header = new byte[extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase) ? 1024 : 12];
         var read = await stream.ReadAsync(header.AsMemory(), cancellationToken);
         var validSignature = extension.ToLowerInvariant() switch
         {
             ".jpg" or ".jpeg" => read >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
             ".png" => read >= 8 && header.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }),
             ".webp" => read >= 12 && header.AsSpan(0, 4).SequenceEqual("RIFF"u8) && header.AsSpan(8, 4).SequenceEqual("WEBP"u8),
-            ".pdf" => read >= 5 && header.AsSpan(0, 5).SequenceEqual("%PDF-"u8),
+            // PDF readers permit the header to occur near the beginning of a file;
+            // browsers may also label a valid PDF as application/octet-stream.
+            ".pdf" => read >= 5 && header.AsSpan(0, read).IndexOf("%PDF-"u8) >= 0,
             _ => false
         };
         if (!validSignature) return ("File content does not match its supported type.", null, null);
@@ -570,22 +626,18 @@ public static class HandoverEndpoints
     private static bool CanAccessHandover(ClaimsPrincipal user, HandoverDto handover)
     {
         var actorId = GetActorId(user);
-        if (user.IsInRole("DRIVER_ESCORT")) return actorId == handover.CreatedByUserId;
+        if (user.IsInRole("DRIVER") || user.IsInRole("ESCORT") || user.IsInRole("DRIVER_ESCORT"))
+            return actorId == handover.CreatedByUserId;
         if (user.IsInRole("CUSTOMER"))
         {
-            return actorId == handover.CreatedByUserId ||
-                (!string.IsNullOrWhiteSpace(handover.ReceiverEmail) && UserEmails(user).Any(email =>
-                    string.Equals(email.Trim(), handover.ReceiverEmail.Trim(), StringComparison.OrdinalIgnoreCase)));
+            if (actorId == handover.CreatedByUserId || actorId == handover.CustomerUserId) return true;
+            var verifiedAccountEmail = user.FindFirstValue("email") ?? user.FindFirstValue(ClaimTypes.Email);
+            return !string.IsNullOrWhiteSpace(verifiedAccountEmail) &&
+                !string.IsNullOrWhiteSpace(handover.ReceiverEmail) &&
+                string.Equals(verifiedAccountEmail.Trim(), handover.ReceiverEmail.Trim(), StringComparison.OrdinalIgnoreCase);
         }
         return user.IsInRole("FLEET_ROUTE_COORDINATOR") || user.IsInRole("LOGISTICS_MANAGER") || user.IsInRole("ADMIN");
     }
-
-    private static IEnumerable<string> UserEmails(ClaimsPrincipal user) => user.Claims
-        .Where(claim => claim.Type.Equals("email", StringComparison.OrdinalIgnoreCase) ||
-            claim.Type.Equals(ClaimTypes.Email, StringComparison.OrdinalIgnoreCase) ||
-            claim.Type.EndsWith("/emailaddress", StringComparison.OrdinalIgnoreCase))
-        .Select(claim => claim.Value)
-        .Where(value => !string.IsNullOrWhiteSpace(value));
 
     private static Guid? GetCorrelationId(HttpContext context) =>
         Guid.TryParse(context.Request.Headers["X-Correlation-ID"].FirstOrDefault(), out var value) ? value : null;

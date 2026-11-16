@@ -9,8 +9,14 @@ using Planning.Api.Grpc;
 using Planning.Application.Abstractions;
 using Planning.Application.Services;
 using Planning.Infrastructure.Persistence;
+using Contracts.Grpc.Compliance;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddGrpcClient<ComplianceQuery.ComplianceQueryClient>(options =>
+{
+    options.Address = new Uri(builder.Configuration["ComplianceGrpc:Address"] ?? "http://localhost:8081");
+});
+builder.Services.AddScoped<ITripComplianceEvaluator, PlanningComplianceGrpcClient>();
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -61,9 +67,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("PlanningAccess", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningRead", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "COMPLIANCE_OFFICER", "ADMIN"));
     options.AddPolicy("PlanningAssignedTrips", policy => policy.RequireRole("DRIVER", "ESCORT", "DRIVER_ESCORT"));
-    options.AddPolicy("PlanningLocationRead", policy => policy.RequireRole("CUSTOMER", "TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningLocationRead", policy => policy.RequireRole("CUSTOMER", "TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "COMPLIANCE_OFFICER", "DRIVER", "ESCORT", "DRIVER_ESCORT", "ADMIN"));
     options.AddPolicy("PlanningApproval", policy => policy.RequireRole("LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningLogistics", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningDataAdmin", policy => policy.RequireRole("ADMIN"));
+    options.AddPolicy("FlightBookingManage", policy => policy.RequireRole("ADMIN", "LOGISTICS_MANAGER", "FLEET_ROUTE_COORDINATOR"));
+    options.AddPolicy("CountrySupportAdmin", policy => policy.RequireRole("LOGISTICS_MANAGER", "ADMIN"));
 });
 
 var planningConnection = builder.Configuration.GetConnectionString("PlanningDb");
@@ -102,7 +113,12 @@ if (app.Environment.IsDevelopment())
 
 var api = app.MapGroup("/api/v1");
 api.MapGroup("").RequireAuthorization("PlanningAccess").MapPlanningMasterData();
+api.MapGroup("").RequireAuthorization("PlanningLocationRead").MapCustomerCountryLookup();
+api.MapGroup("").RequireAuthorization("PlanningLocationRead").MapRouteCapabilityEndpoints(builder.Configuration);
+api.MapGroup("").RequireAuthorization("PlanningRead").MapPlanningReadEndpoints();
 api.MapGroup("").RequireAuthorization("PlanningAccess").MapPlanningCommands();
+api.MapStaffRouteCountryEndpoints();
+api.MapStaffOperatingAreaEndpoints();
 api.MapGroup("").RequireAuthorization("PlanningAssignedTrips").MapAssignedTripEndpoints();
 api.MapGroup("").RequireAuthorization("PlanningLocationRead").MapBookingLocationRead();
 

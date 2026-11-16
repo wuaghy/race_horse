@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
+    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
     <PackageReference Include="Grpc.Tools" Version="2.72.0" PrivateAssets="All" />
   </ItemGroup>
 
@@ -24,6 +25,7 @@
 
   <ItemGroup>
     <Protobuf Include="..\..\..\Contracts\Grpc\planning.proto" GrpcServices="Server" Link="Protos\planning.proto" />
+    <Protobuf Include="..\..\..\Contracts\Grpc\compliance.proto" GrpcServices="Client" Link="Protos\compliance.proto" />
   </ItemGroup>
 
 </Project>

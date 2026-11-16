@@ -24,6 +24,14 @@ public static class BookingLocationReadEndpoints
             ));
         }).WithName("ListBookingLocations");
 
+        api.MapGet("/booking/locations/nearest-receiving", async (decimal latitude, decimal longitude, IFleetMasterDataService service, CancellationToken cancellationToken) =>
+        {
+            var result = await service.FindNearestReceivingLocationAsync(latitude, longitude, cancellationToken);
+            return result is null
+                ? Results.NotFound(ApiResponse<object>.Failure(40400, "No active receiving location with coordinates is available."))
+                : Results.Ok(ApiResponse<NearestReceivingLocationDto>.Success(result));
+        }).WithName("FindNearestReceivingLocation");
+
         return api;
     }
 }

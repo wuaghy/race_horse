@@ -85,6 +85,7 @@ packages/
 *.db-shm
 *.db-wal
 *.dmp
+planning-vstest-diag*.log
 *.tmp
 *.bak
 *.swp

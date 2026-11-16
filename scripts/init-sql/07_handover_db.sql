@@ -17,6 +17,7 @@ CREATE TABLE HandoverRecords (
     ReceiverEmail       VARCHAR(255)     NULL,
     HandoverLocationId  UNIQUEIDENTIFIER NULL,       -- logical ref -> PlanningDb.Locations
     ScheduledAt         DATETIME2(3)     NULL,
+    TripArrivedAt       DATETIME2(3)     NULL,
     ActualAt            DATETIME2(3)     NULL,
     Notes               NVARCHAR(3000)   NULL,
     SignatureUrl        VARCHAR(1000)    NULL,

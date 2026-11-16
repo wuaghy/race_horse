@@ -18,31 +18,73 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
         if (filter.PageSize is < 1 or > 100) throw new BusinessRuleException("Page size must be between 1 and 100.", "INVALID_PAGE_SIZE", "pageSize");
         if (filter.Status is not null && !HandoverStatuses.IsValid(filter.Status.Trim().ToUpperInvariant()))
             throw new BusinessRuleException("Unknown handover status.", "INVALID_HANDOVER_STATUS", "status");
+        var sortBy = string.IsNullOrWhiteSpace(filter.SortBy) ? "created" : filter.SortBy.Trim().ToLowerInvariant();
+        var sortDirection = string.IsNullOrWhiteSpace(filter.SortDirection) ? "desc" : filter.SortDirection.Trim().ToLowerInvariant();
+        if (sortBy is not ("created" or "scheduled" or "number" or "status"))
+            throw new BusinessRuleException("Sort by must be created, scheduled, number, or status.", "INVALID_SORT_FIELD", "sortBy");
+        if (sortDirection is not ("asc" or "desc"))
+            throw new BusinessRuleException("Sort direction must be asc or desc.", "INVALID_SORT_DIRECTION", "sortDirection");
 
         var query = db.HandoverRecords.AsNoTracking().AsQueryable();
         if (filter.TripId.HasValue) query = query.Where(x => x.TripId == filter.TripId.Value);
         if (filter.CreatedByUserId.HasValue) query = query.Where(x => x.CreatedByUserId == filter.CreatedByUserId.Value);
-        if (!string.IsNullOrWhiteSpace(filter.ReceiverEmail))
+        if (filter.CustomerUserId.HasValue || !string.IsNullOrWhiteSpace(filter.CustomerEmail))
         {
-            var receiverEmail = filter.ReceiverEmail.Trim().ToLowerInvariant();
-            query = query.Where(x => x.ReceiverEmail != null && x.ReceiverEmail.ToLower() == receiverEmail);
+            var customerUserId = filter.CustomerUserId;
+            var customerEmail = filter.CustomerEmail?.Trim();
+            query = query.Where(x => (customerUserId.HasValue && (x.CustomerUserId == customerUserId.Value || x.CreatedByUserId == customerUserId.Value)) ||
+                (!string.IsNullOrEmpty(customerEmail) && x.ReceiverEmail != null && x.ReceiverEmail.ToLower() == customerEmail.ToLower()));
         }
         if (filter.Status is not null)
         {
             var normalizedStatus = filter.Status.Trim().ToUpperInvariant();
             query = query.Where(x => x.Status == normalizedStatus);
         }
+        var search = filter.Search?.Trim();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var horseIds = filter.HorseIds ?? [];
+            query = query.Where(x => x.HandoverNo.Contains(search) ||
+                (x.ReceiverName != null && x.ReceiverName.Contains(search)) ||
+                (x.ReceiverEmail != null && x.ReceiverEmail.Contains(search)) ||
+                (x.ReceiverPhone != null && x.ReceiverPhone.Contains(search)) ||
+                x.TripId.ToString().Contains(search) ||
+                (horseIds.Count > 0 && x.Horses.Any(horse => horseIds.Contains(horse.HorseId))));
+        }
 
         var total = await query.LongCountAsync(cancellationToken);
-        var rows = await query
-            .OrderByDescending(x => x.CreatedAt)
-            .ThenByDescending(x => x.Id)
+        var ordered = (sortBy, sortDirection) switch
+        {
+            ("scheduled", "asc") => query.OrderBy(x => x.ScheduledAt).ThenBy(x => x.Id),
+            ("scheduled", _) => query.OrderByDescending(x => x.ScheduledAt).ThenByDescending(x => x.Id),
+            ("number", "asc") => query.OrderBy(x => x.HandoverNo).ThenBy(x => x.Id),
+            ("number", _) => query.OrderByDescending(x => x.HandoverNo).ThenByDescending(x => x.Id),
+            ("status", "asc") => query.OrderBy(x => x.Status).ThenByDescending(x => x.CreatedAt),
+            ("status", _) => query.OrderByDescending(x => x.Status).ThenByDescending(x => x.CreatedAt),
+            ("created", "asc") => query.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id),
+            _ => query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+        };
+        var rows = await ordered
             .Skip(checked(filter.Page * filter.PageSize))
             .Take(filter.PageSize)
             .Include(x => x.Horses)
             .ToListAsync(cancellationToken);
 
-        return new HandoverListResult(rows.Select(ToDto).ToList(), total, filter.Page, filter.PageSize);
+        var tripIds = rows.Select(row => row.TripId).ToArray();
+        var orderByTrip = tripIds.Length == 0
+            ? new Dictionary<Guid, Guid>()
+            : await db.HandoverTripCustomerLinks.AsNoTracking()
+                .Where(link => tripIds.Contains(link.TripId))
+                .ToDictionaryAsync(link => link.TripId, link => link.OrderId, cancellationToken);
+
+        return new HandoverListResult(
+            rows.Select(row => orderByTrip.TryGetValue(row.TripId, out var orderId)
+                    ? ToDto(row, orderId)
+                    : ToDto(row))
+                .ToList(),
+            total,
+            filter.Page,
+            filter.PageSize);
     }
 
     public async Task<HandoverDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -58,7 +100,13 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
         var handover = await db.HandoverRecords.AsNoTracking()
             .Include(x => x.Horses)
             .SingleOrDefaultAsync(x => x.TripId == tripId, cancellationToken);
-        return handover is null ? null : ToDto(handover);
+        if (handover is null) return null;
+
+        var orderId = await db.HandoverTripCustomerLinks.AsNoTracking()
+            .Where(link => link.TripId == tripId)
+            .Select(link => (Guid?)link.OrderId)
+            .SingleOrDefaultAsync(cancellationToken);
+        return ToDto(handover, orderId);
     }
 
     public async Task<HandoverCompletionCheckDto> EvaluateCompletionAsync(Guid id, CancellationToken cancellationToken = default)
@@ -68,7 +116,8 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new NotFoundException("HandoverRecord", id);
 
-        var blockers = ComputeCompletionBlockers(handover);
+        var severeIncidentCount = await CountUnresolvedSevereIncidentsAsync(handover.TripId, cancellationToken);
+        var blockers = ComputeCompletionBlockers(handover, severeIncidentCount);
         return new HandoverCompletionCheckDto(handover.Id, handover.TripId, blockers.Count == 0, blockers);
     }
 
@@ -82,14 +131,19 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
             throw new BusinessRuleException("A handover record already exists for this trip.", "HANDOVER_ALREADY_EXISTS", "tripId");
 
         var now = DateTime.UtcNow;
+        var recipient = await db.HandoverTripCustomerLinks.AsNoTracking()
+            .Where(link => link.TripId == request.TripId)
+            .Select(link => new { link.CustomerUserId, link.ReceiverName, link.ReceiverPhone, link.ReceiverEmail })
+            .SingleOrDefaultAsync(cancellationToken);
         var handover = new HandoverRecord
         {
             HandoverNo = $"HND-{now:yyyyMMdd}-{Guid.NewGuid():N}"[..21],
             TripId = request.TripId,
+            CustomerUserId = recipient?.CustomerUserId,
             Status = HandoverStatuses.Draft,
-            ReceiverName = NormalizeOptional(request.ReceiverName),
-            ReceiverPhone = NormalizeOptional(request.ReceiverPhone),
-            ReceiverEmail = NormalizeOptional(request.ReceiverEmail),
+            ReceiverName = NormalizeOptional(request.ReceiverName) ?? recipient?.ReceiverName,
+            ReceiverPhone = NormalizeOptional(request.ReceiverPhone) ?? recipient?.ReceiverPhone,
+            ReceiverEmail = NormalizeOptional(request.ReceiverEmail) ?? recipient?.ReceiverEmail,
             HandoverLocationId = request.HandoverLocationId,
             ScheduledAt = NormalizeUtc(request.ScheduledAt),
             Notes = NormalizeOptional(request.Notes),
@@ -294,6 +348,9 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
         if (handover.Horses.Count == 0)
             throw new BusinessRuleException("Handover must contain at least one horse before submitting for acceptance.", "NO_HORSES_IN_HANDOVER", "horses");
 
+        if (!handover.ScheduledAt.HasValue || handover.ScheduledAt.Value <= DateTime.UtcNow)
+            throw new BusinessRuleException("Set a future handover appointment before sending it to the customer.", "HANDOVER_SCHEDULE_REQUIRED", "scheduledAt");
+
         if (string.IsNullOrWhiteSpace(handover.ReceiverName))
             throw new BusinessRuleException("Receiver name is required before submitting for acceptance.", "RECEIVER_NAME_REQUIRED", "receiverName");
 
@@ -314,6 +371,8 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
     public async Task<HandoverDto> AcceptHorseAsync(Guid handoverId, Guid horseId, Guid actorUserId, AcceptHandoverHorseRequest request, Guid? correlationId, CancellationToken cancellationToken = default)
     {
         ValidateExpectedVersion(request.ExpectedVersionNo);
+        if (!request.ComplianceDocumentsReviewed)
+            throw new BusinessRuleException("The customer must confirm that the horse's compliance documents were reviewed before accepting the horse.", "COMPLIANCE_REVIEW_CONFIRMATION_REQUIRED", "complianceDocumentsReviewed");
         ValidateHorseFields(request.Condition, request.Note);
 
         var handover = await LoadForUpdateAsync(handoverId, request.ExpectedVersionNo, cancellationToken);
@@ -335,7 +394,8 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
         handover.UpdatedAt = now;
         handover.VersionNo++;
 
-        await AddAuditAsync(handover.Id, actorUserId, "HORSE_ACCEPTED", oldState, handover.Status, NormalizeOptional(request.Note) ?? $"Accepted HorseId={horseId}", correlationId, now, cancellationToken);
+        var acceptanceAuditNote = $"Customer confirmed horse and compliance documents reviewed. {NormalizeOptional(request.Note) ?? $"HorseId={horseId}"}";
+        await AddAuditAsync(handover.Id, actorUserId, "HORSE_ACCEPTED", oldState, handover.Status, acceptanceAuditNote, correlationId, now, cancellationToken);
         await SaveAsync(cancellationToken);
         return ToDto(handover);
     }
@@ -444,7 +504,8 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
         if (handover.Status == HandoverStatuses.Completed)
             throw new BusinessRuleException("Handover is already completed.", "HANDOVER_ALREADY_COMPLETED", "status");
 
-        var blockers = ComputeCompletionBlockers(handover);
+        var severeIncidentCount = await CountUnresolvedSevereIncidentsAsync(handover.TripId, cancellationToken);
+        var blockers = ComputeCompletionBlockers(handover, severeIncidentCount);
         if (blockers.Count > 0)
         {
             var errors = blockers
@@ -480,6 +541,8 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
             .OrderBy(h => h)
             .ToList();
 
+        var customerLink = await db.HandoverTripCustomerLinks.AsNoTracking()
+            .SingleOrDefaultAsync(link => link.TripId == handover.TripId, cancellationToken);
         var eventData = new HandoverCompletedData(
             handover.Id,
             handover.HandoverNo,
@@ -487,7 +550,13 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
             handover.HandoverLocationId,
             actualAt,
             actorUserId,
-            acceptedHorseIds);
+            acceptedHorseIds,
+            customerLink?.OrderId,
+            null,
+            handover.CustomerUserId,
+            handover.ReceiverEmail,
+            null,
+            null);
 
         await db.OutboxMessages.AddAsync(new HandoverOutboxMessage
         {
@@ -521,7 +590,12 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
         return handover;
     }
 
-    private static List<string> ComputeCompletionBlockers(HandoverRecord handover)
+    private async Task<int> CountUnresolvedSevereIncidentsAsync(Guid tripId, CancellationToken cancellationToken) =>
+        await db.HandoverIncidentFlags.AsNoTracking().CountAsync(incident => incident.TripId == tripId &&
+            (incident.Severity == "HIGH" || incident.Severity == "CRITICAL") &&
+            (incident.Status == "OPEN" || incident.Status == "INVESTIGATING"), cancellationToken);
+
+    private static List<string> ComputeCompletionBlockers(HandoverRecord handover, int unresolvedSevereIncidentCount = 0)
     {
         var blockers = new List<string>();
 
@@ -551,6 +625,9 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
 
         if (string.IsNullOrWhiteSpace(handover.SignatureUrl))
             blockers.Add("Receiver signature is required before completing handover.");
+
+        if (unresolvedSevereIncidentCount > 0)
+            blockers.Add($"Resolve {unresolvedSevereIncidentCount} open high-severity incident(s) before completing handover.");
 
         return blockers;
     }
@@ -583,6 +660,8 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
     private static void EnsureCanReviewHorses(HandoverRecord handover)
     {
         EnsureNotCompleted(handover);
+        if (!handover.TripArrivedAt.HasValue)
+            throw new BusinessRuleException("The customer can confirm receipt after the trip arrival is recorded.", "TRIP_NOT_ARRIVED", "tripArrivedAt");
         if (handover.Status == HandoverStatuses.Draft)
             throw new BusinessRuleException("Handover must be submitted for acceptance before horses can be accepted or disputed.", "HANDOVER_NOT_SUBMITTED", "status");
     }
@@ -676,7 +755,7 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
     private static string? Truncate(string? value, int maxLength) =>
         string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value[..maxLength];
 
-    private static HandoverDto ToDto(HandoverRecord handover)
+    private static HandoverDto ToDto(HandoverRecord handover, Guid? orderId = null)
     {
         var blockers = ComputeCompletionBlockers(handover);
         return new HandoverDto(
@@ -689,6 +768,7 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
             handover.ReceiverEmail,
             handover.HandoverLocationId,
             handover.ScheduledAt,
+            handover.TripArrivedAt,
             handover.ActualAt,
             handover.Notes,
             handover.SignatureUrl,
@@ -699,7 +779,9 @@ public sealed class HandoverService(IHandoverDbContext db) : IHandoverService
             handover.UpdatedAt,
             blockers.Count == 0,
             blockers,
-            handover.Horses.OrderBy(x => x.HorseId).Select(ToDto).ToList());
+            handover.Horses.OrderBy(x => x.HorseId).Select(ToDto).ToList(),
+            handover.CustomerUserId,
+            orderId);
     }
 
     private static HandoverHorseDto ToDto(HandoverHorse horse) => new(

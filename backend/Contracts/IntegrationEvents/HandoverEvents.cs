@@ -7,7 +7,13 @@ public sealed record HandoverCompletedData(
     Guid? HandoverLocationId,
     DateTime ActualAt,
     Guid CompletedByUserId,
-    IReadOnlyList<Guid> AcceptedHorseIds);
+    IReadOnlyList<Guid> AcceptedHorseIds,
+    Guid? OrderId = null,
+    Guid? RequestId = null,
+    Guid? CustomerUserId = null,
+    string? CustomerEmail = null,
+    string? RequestNo = null,
+    string? OrderNo = null);
 
 public sealed record HandoverCompletedEvent : IntegrationEvent<HandoverCompletedData>
 {

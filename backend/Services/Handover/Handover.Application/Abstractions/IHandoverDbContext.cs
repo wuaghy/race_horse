@@ -8,6 +8,9 @@ public interface IHandoverDbContext
 {
     DbSet<HandoverRecord> HandoverRecords { get; }
     DbSet<HandoverHorse> HandoverHorses { get; }
+    DbSet<HandoverIncidentFlag> HandoverIncidentFlags { get; }
+    DbSet<HandoverTripCustomerLink> HandoverTripCustomerLinks { get; }
+    DbSet<HandoverOrderCustomerLink> HandoverOrderCustomerLinks { get; }
     DbSet<TripCostItem> TripCostItems { get; }
     DbSet<TripRevenueItem> TripRevenueItems { get; }
     DbSet<HandoverOutboxMessage> OutboxMessages { get; }

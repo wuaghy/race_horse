@@ -54,15 +54,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("HandoverRead", policy => policy.RequireRole("CUSTOMER", "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
-    options.AddPolicy("HandoverPrepare", policy => policy.RequireRole("DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("HandoverRead", policy => policy.RequireRole("CUSTOMER", "DRIVER", "ESCORT", "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("HandoverPrepare", policy => policy.RequireRole("FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
     options.AddPolicy("HandoverWrite", policy => policy.RequireRole("CUSTOMER", "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
-    options.AddPolicy("HandoverAccept", policy => policy.RequireRole("CUSTOMER", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("HandoverCustomerReview", policy => policy.RequireRole("CUSTOMER"));
     options.AddPolicy("HandoverManage", policy => policy.RequireRole("FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
-    options.AddPolicy("HandoverComplete", policy => policy.RequireRole("CUSTOMER", "DRIVER_ESCORT", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("HandoverComplete", policy => policy.RequireRole("FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
 });
 
 builder.Services.AddHandoverInfrastructure(builder.Configuration);
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();

@@ -9,6 +9,9 @@ public sealed class HandoverDbContext(DbContextOptions<HandoverDbContext> option
 {
     public DbSet<HandoverRecord> HandoverRecords => Set<HandoverRecord>();
     public DbSet<HandoverHorse> HandoverHorses => Set<HandoverHorse>();
+    public DbSet<HandoverIncidentFlag> HandoverIncidentFlags => Set<HandoverIncidentFlag>();
+    public DbSet<HandoverTripCustomerLink> HandoverTripCustomerLinks => Set<HandoverTripCustomerLink>();
+    public DbSet<HandoverOrderCustomerLink> HandoverOrderCustomerLinks => Set<HandoverOrderCustomerLink>();
     public DbSet<TripCostItem> TripCostItems => Set<TripCostItem>();
     public DbSet<TripRevenueItem> TripRevenueItems => Set<TripRevenueItem>();
     public DbSet<HandoverOutboxMessage> OutboxMessages => Set<HandoverOutboxMessage>();
@@ -25,11 +28,13 @@ public sealed class HandoverDbContext(DbContextOptions<HandoverDbContext> option
             e.HasIndex(x => x.HandoverNo).IsUnique();
             e.HasIndex(x => x.TripId).IsUnique();
             e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.CustomerUserId);
             e.Property(x => x.HandoverNo).HasMaxLength(50).IsRequired();
             e.Property(x => x.Status).HasMaxLength(40).IsRequired();
             e.Property(x => x.ReceiverName).HasMaxLength(200);
             e.Property(x => x.ReceiverPhone).HasMaxLength(50);
             e.Property(x => x.ReceiverEmail).HasMaxLength(255);
+            e.Property(x => x.TripArrivedAt);
             e.Property(x => x.Notes).HasMaxLength(3000);
             e.Property(x => x.SignatureUrl).HasMaxLength(1000);
             e.Property(x => x.VersionNo).IsConcurrencyToken().HasDefaultValue(1);
@@ -46,6 +51,34 @@ public sealed class HandoverDbContext(DbContextOptions<HandoverDbContext> option
             e.Property(x => x.Condition).HasMaxLength(2000);
             e.Property(x => x.IssueNote).HasMaxLength(2000);
             e.Property(x => x.EvidenceImageUrl).HasMaxLength(1000);
+        });
+
+        b.Entity<HandoverIncidentFlag>(e =>
+        {
+            e.ToTable("HandoverIncidentFlags");
+            e.HasKey(x => x.IncidentId);
+            e.Property(x => x.Severity).HasMaxLength(30).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(30).IsRequired();
+            e.HasIndex(x => new { x.TripId, x.Severity, x.Status });
+        });
+
+        b.Entity<HandoverTripCustomerLink>(e =>
+        {
+            e.ToTable("HandoverTripCustomerLinks");
+            e.HasKey(x => x.TripId);
+            e.HasIndex(x => x.OrderId);
+            e.Property(x => x.ReceiverName).HasMaxLength(200);
+            e.Property(x => x.ReceiverPhone).HasMaxLength(50);
+            e.Property(x => x.ReceiverEmail).HasMaxLength(255);
+        });
+
+        b.Entity<HandoverOrderCustomerLink>(e =>
+        {
+            e.ToTable("HandoverOrderCustomerLinks");
+            e.HasKey(x => x.OrderId);
+            e.Property(x => x.ReceiverName).HasMaxLength(200);
+            e.Property(x => x.ReceiverPhone).HasMaxLength(50);
+            e.Property(x => x.ReceiverEmail).HasMaxLength(255);
         });
 
         b.Entity<TripCostItem>(e =>

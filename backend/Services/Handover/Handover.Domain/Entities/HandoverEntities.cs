@@ -27,12 +27,14 @@ public sealed class HandoverRecord
     public Guid Id { get; set; } = Guid.NewGuid();
     public string HandoverNo { get; set; } = null!;
     public Guid TripId { get; set; }
+    public Guid? CustomerUserId { get; set; }
     public string Status { get; set; } = HandoverStatuses.Draft;
     public string? ReceiverName { get; set; }
     public string? ReceiverPhone { get; set; }
     public string? ReceiverEmail { get; set; }
     public Guid? HandoverLocationId { get; set; }
     public DateTime? ScheduledAt { get; set; }
+    public DateTime? TripArrivedAt { get; set; }
     public DateTime? ActualAt { get; set; }
     public string? Notes { get; set; }
     public string? SignatureUrl { get; set; }
@@ -55,6 +57,36 @@ public sealed class HandoverHorse
     public string? IssueNote { get; set; }
     public string? EvidenceImageUrl { get; set; }
     public DateTime? AcceptedAt { get; set; }
+}
+
+public sealed class HandoverIncidentFlag
+{
+    public Guid IncidentId { get; set; }
+    public Guid TripId { get; set; }
+    public string Severity { get; set; } = "UNKNOWN";
+    public string Status { get; set; } = "OPEN";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class HandoverTripCustomerLink
+{
+    public Guid TripId { get; set; }
+    public Guid OrderId { get; set; }
+    public Guid? CustomerUserId { get; set; }
+    public string? ReceiverName { get; set; }
+    public string? ReceiverPhone { get; set; }
+    public string? ReceiverEmail { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class HandoverOrderCustomerLink
+{
+    public Guid OrderId { get; set; }
+    public Guid CustomerUserId { get; set; }
+    public string? ReceiverName { get; set; }
+    public string? ReceiverPhone { get; set; }
+    public string? ReceiverEmail { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class TripCostItem

@@ -10,13 +10,15 @@ Evidence:
 - Clean Architecture separation into Domain, Application, Infrastructure and API projects.
 - Database-per-service ownership across eight SQL Server databases.
 - JWT authentication and role policies enforced at the Gateway and service boundaries.
-- C4 diagrams, service boundaries, database design, workflow states, security and API standards under `Docs/racehorse-transport-docs/docs/`.
+- Current C4 diagrams, service boundaries, data model, business flows and API contracts are maintained in the repository's [canonical docs](../../../docs/README.md).
 
 Primary references:
 
-- `Docs/racehorse-transport-docs/docs/C4_ARCHITECTURE.md`
-- `Docs/racehorse-transport-docs/docs/ARCHITECTURE.md`
-- `Docs/racehorse-transport-docs/docs/DATABASE.md`
+- `../../../docs/architecture/c4.md`
+- `../../../docs/architecture/service-map.md`
+- `../../../docs/data/model.md`
+- `../../../docs/business/flows.md`
+- `../../../docs/contracts/api.md`
 - `backend/Gateway/Gateway.Api/appsettings.json`
 
 ## 2. REST API implementation — 20%
@@ -135,20 +137,13 @@ Recommended presentation order:
 
 ## Final verification checklist
 
-Verified baseline on 2026-10-17:
+Runtime and build verification on 2026-11-14:
 
-- Backend solution: **65 tests passed, 0 failed**.
-- Planning, Tracking and Gateway Docker images: **built successfully**.
-- Live Gateway → Tracking → Planning gRPC request: **HTTP 200** with `source: "planning-grpc"`.
-- RabbitMQ: **3 durable queues with active consumers**; `Planning.TripCreated` reached `PUBLISHED` with retry count 0.
-- Project Docker stack: **all application services running; SQL Server, RabbitMQ and MinIO healthy**.
-- Frontend production build: **passed**.
+- Backend solution test run: **69 passed, 0 failed** across Planning (24), Compliance (24), Handover (7), Incident (7), and Notification (7).
+- Frontend production build: **passed**; Vite reports the minified JS bundle is 745 kB, above its 500 kB advisory threshold.
+- Docker Compose from `D:\.tmp_asm_prn`: Gateway and all 8 APIs are running; SQL Server, RabbitMQ and MinIO are healthy; DB and MinIO init containers exited 0.
+- Gateway health, Swagger UI, demo admin login, `/auth/me`, and 10 read-only business/staff endpoints returned HTTP 200.
+- Gateway uses host port 8180 in the tested session because port 8080 is already occupied.
+- This smoke run did not submit business mutations or re-demonstrate RabbitMQ publish/consume and Tracking-to-Planning gRPC flows.
 
-- [x] `dotnet build RacehorseTransport.sln`
-- [x] Backend automated tests pass.
-- [x] Frontend production build passes.
-- [x] All project Docker containers are running; infrastructure health checks pass.
-- [x] REST login and one protected paged query pass.
-- [x] RabbitMQ publish/consume path is demonstrated.
-- [x] gRPC path returns a real Planning trip through Tracking.
-- [ ] Presentation screenshots contain no credentials or secrets.
+The earlier 2026-10-17 checklist is superseded by these results. Keep screenshots free of credentials and secrets before presentation.

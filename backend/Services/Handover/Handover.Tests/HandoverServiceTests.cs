@@ -43,12 +43,14 @@ public class HandoverServiceTests
 
         // Add horse, still missing receiverName
         await svc.UpsertHorseAsync(handover.Id, actorId, new UpsertHandoverHorseRequest(Guid.NewGuid(), "Healthy"), null);
+        await svc.UpdateDraftAsync(handover.Id, actorId,
+            new UpdateHandoverRequest(null, null, null, null, DateTime.UtcNow.AddDays(1), null), null);
 
         await Assert.ThrowsAsync<BusinessRuleException>(() =>
             svc.SubmitForAcceptanceAsync(handover.Id, actorId, new SubmitHandoverRequest(), null));
 
         // Update receiverName, then submit succeeds
-        await svc.UpdateDraftAsync(handover.Id, actorId, new UpdateHandoverRequest("Receiver Name", "+84-909", "r@example.com", null, null, "Notes"), null);
+        await svc.UpdateDraftAsync(handover.Id, actorId, new UpdateHandoverRequest("Receiver Name", "+84-909", "r@example.com", null, DateTime.UtcNow.AddDays(1), "Notes"), null);
         var submitted = await svc.SubmitForAcceptanceAsync(handover.Id, actorId, new SubmitHandoverRequest("Ready for customer acceptance"), null);
 
         Assert.Equal(HandoverStatuses.PendingAcceptance, submitted.Status);
@@ -69,6 +71,7 @@ public class HandoverServiceTests
         var handover = await svc.CreateAsync(driverId, new CreateHandoverRequest(
             Guid.NewGuid(),
             ReceiverName: "Customer Stable",
+            ScheduledAt: DateTime.UtcNow.AddDays(1),
             Horses:
             [
                 new CreateHandoverHorseItem(horse1, "Stable condition"),
@@ -82,9 +85,13 @@ public class HandoverServiceTests
 
         // 2. Submit for acceptance -> PENDING_ACCEPTANCE
         await svc.SubmitForAcceptanceAsync(handover.Id, driverId, new SubmitHandoverRequest(), null);
+        var arrivedHandover = await db.HandoverRecords.SingleAsync(item => item.Id == handover.Id);
+        arrivedHandover.TripArrivedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
 
         // 3. Customer accepts horse1, disputes horse2
-        var afterAccept1 = await svc.AcceptHorseAsync(handover.Id, horse1, customerId, new AcceptHandoverHorseRequest("Good", "Accepted horse 1"), null);
+        var afterAccept1 = await svc.AcceptHorseAsync(handover.Id, horse1, customerId,
+            new AcceptHandoverHorseRequest("Good", "Accepted horse 1", ComplianceDocumentsReviewed: true), null);
         Assert.Equal(HandoverStatuses.PendingAcceptance, afterAccept1.Status);
 
         var afterDispute2 = await svc.DisputeHorseAsync(handover.Id, horse2, customerId, new DisputeHandoverHorseRequest("Leg scratch needs vet confirmation"), null);

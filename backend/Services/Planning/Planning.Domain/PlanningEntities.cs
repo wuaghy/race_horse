@@ -18,6 +18,7 @@ public static class PlanningConstants
         public const string HandedOver = "HANDED_OVER";
         public const string Completed = "COMPLETED";
         public const string Cancelled = "CANCELLED";
+        public const string Consolidated = "CONSOLIDATED";
     }
 
     public static class RouteVersionStatus
@@ -124,12 +125,46 @@ public sealed class FlightBooking : Entity
     public DateTime ScheduledArrivalAt { get; set; }
     public DateTime? ActualDepartureAt { get; set; }
     public DateTime? ActualArrivalAt { get; set; }
+    public string ConfirmationStatus { get; set; } = "PENDING";
+    public DateTime? ConfirmedAt { get; set; }
+    public Guid? ConfirmedByUserId { get; set; }
+}
+
+public sealed class RouteTransportCapability : Entity
+{
+    public Guid OriginLocationId { get; set; }
+    public Guid DestinationLocationId { get; set; }
+    public string AllowedModesJson { get; set; } = "[]";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public Guid UpdatedByUserId { get; set; }
+    public List<RouteTransportCapabilityMode> ModeEstimates { get; set; } = [];
+}
+
+public sealed class RouteTransportCapabilityMode
+{
+    public Guid RouteTransportCapabilityId { get; set; }
+    public RouteTransportCapability RouteTransportCapability { get; set; } = null!;
+    public string Mode { get; set; } = null!;
+    public int MinDurationMinutes { get; set; }
+    public int MaxDurationMinutes { get; set; }
+    public int? MinExpressDurationMinutes { get; set; }
+    public int? MaxExpressDurationMinutes { get; set; }
 }
 
 public sealed class TransportTrip : Entity
 {
     public string TripNo { get; set; } = null!;
-    public Guid OrderId { get; set; }
+    public Guid? OrderId { get; set; }
+    public Guid? MergedIntoTripId { get; set; }
+    public Guid? RequestId { get; set; }
+    public Guid? OriginLocationId { get; set; }
+    public Guid? DestinationLocationId { get; set; }
+    public decimal? CustomPickupLatitude { get; set; }
+    public decimal? CustomPickupLongitude { get; set; }
+    public string? CustomPickupLabel { get; set; }
+    public DateTime? RequestedDepartureAt { get; set; }
+    public DateTime? RequestedArrivalAt { get; set; }
+    public string? PreferredTransportMode { get; set; }
     public string Status { get; set; } = PlanningConstants.TripStatus.Planned;
     public DateTime? PlannedDepartureAt { get; set; }
     public DateTime? PlannedArrivalAt { get; set; }
@@ -142,9 +177,38 @@ public sealed class TransportTrip : Entity
     public int DelayMinutes { get; set; }
     public bool? OnTime { get; set; }
     public bool ComplianceReady { get; set; }
+    public bool CancellationPending { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public int VersionNo { get; set; } = 1;
+}
+
+/// <summary>Booking/order membership of a shared dispatch trip. Booking IDs remain logical references.</summary>
+public sealed class TripOrder : Entity
+{
+    public Guid? TripId { get; set; }
+    public Guid OrderId { get; set; }
+    public string? OrderNo { get; set; }
+    public string? RequestNo { get; set; }
+    public Guid? RequestId { get; set; }
+    public Guid? CustomerId { get; set; }
+    public Guid? CustomerUserId { get; set; }
+    public string? CustomerName { get; set; }
+    public Guid? OriginLocationId { get; set; }
+    public Guid? DestinationLocationId { get; set; }
+    public decimal? CustomPickupLatitude { get; set; }
+    public decimal? CustomPickupLongitude { get; set; }
+    public string? CustomPickupLabel { get; set; }
+    public DateTime? RequestedDepartureAt { get; set; }
+    public DateTime? RequestedArrivalAt { get; set; }
+    public string? PreferredTransportMode { get; set; }
+    public string HorseIdsJson { get; set; } = "[]";
+    public string HorseNamesJson { get; set; } = "{}";
+    public string PaymentStatus { get; set; } = "PAID";
+    public string? ReceiverName { get; set; }
+    public string? ReceiverPhone { get; set; }
+    public string? ReceiverEmail { get; set; }
+    public DateTime? CompletedAt { get; set; }
 }
 
 public sealed class RoutePlan : Entity
@@ -187,7 +251,21 @@ public sealed class RouteLeg : Entity
     public DateTime? ActualDepartureAt { get; set; }
     public DateTime? ActualArrivalAt { get; set; }
     public decimal? DistanceKm { get; set; }
+    public string? RouteShapeJson { get; set; }
     public string Status { get; set; } = "PLANNED";
+}
+
+public sealed class RouteTemplate : Entity
+{
+    public string Name { get; set; } = null!;
+    public Guid OriginLocationId { get; set; }
+    public Guid DestinationLocationId { get; set; }
+    public string TransportMode { get; set; } = null!;
+    public decimal? CustomPickupLatitude { get; set; }
+    public decimal? CustomPickupLongitude { get; set; }
+    public string RouteShapeJson { get; set; } = "[]";
+    public Guid CreatedByUserId { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 public sealed class Checkpoint : Entity
@@ -220,6 +298,21 @@ public sealed class StaffAssignment : Entity
     public string Role { get; set; } = null!;
     public DateTime AssignedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ReleasedAt { get; set; }
+}
+
+public sealed class StaffRouteCountryAuthorization : Entity
+{
+    public Guid UserId { get; set; }
+    public Guid CountryId { get; set; }
+    public DateOnly? ValidUntil { get; set; }
+}
+
+public sealed class StaffOperatingArea : Entity
+{
+    public Guid UserId { get; set; }
+    public Guid LocationId { get; set; }
+    public decimal RadiusKm { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class HorseLegAssignment : Entity
@@ -258,4 +351,13 @@ public sealed class AuditLog : Entity
     public Guid? CorrelationId { get; set; }
     public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class TripIncidentFlag
+{
+    public Guid IncidentId { get; set; }
+    public Guid TripId { get; set; }
+    public string Severity { get; set; } = "UNKNOWN";
+    public string Status { get; set; } = "OPEN";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

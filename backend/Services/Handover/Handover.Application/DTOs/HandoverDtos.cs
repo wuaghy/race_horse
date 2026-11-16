@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Handover.Application.DTOs;
 
 public sealed record HandoverHorseDto(
@@ -20,6 +22,7 @@ public sealed record HandoverDto(
     string? ReceiverEmail,
     Guid? HandoverLocationId,
     DateTime? ScheduledAt,
+    DateTime? TripArrivedAt,
     DateTime? ActualAt,
     string? Notes,
     string? SignatureUrl,
@@ -30,7 +33,9 @@ public sealed record HandoverDto(
     DateTime UpdatedAt,
     bool CanComplete,
     IReadOnlyList<string> CompletionBlockers,
-    IReadOnlyList<HandoverHorseDto> Horses);
+    IReadOnlyList<HandoverHorseDto> Horses,
+    [property: JsonIgnore] Guid? CustomerUserId = null,
+    Guid? OrderId = null);
 
 public sealed record HandoverCompletionCheckDto(
     Guid HandoverId,
@@ -44,7 +49,12 @@ public sealed record HandoverFilter(
     int Page,
     int PageSize,
     Guid? CreatedByUserId = null,
-    string? ReceiverEmail = null);
+    Guid? CustomerUserId = null,
+    string? CustomerEmail = null,
+    string? Search = null,
+    string? SortBy = null,
+    string? SortDirection = null,
+    IReadOnlyList<Guid>? HorseIds = null);
 
 public sealed record HandoverListResult(
     IReadOnlyList<HandoverDto> Items,
@@ -94,7 +104,8 @@ public sealed record SubmitHandoverRequest(
 public sealed record AcceptHandoverHorseRequest(
     string? Condition = null,
     string? Note = null,
-    int? ExpectedVersionNo = null);
+    int? ExpectedVersionNo = null,
+    bool ComplianceDocumentsReviewed = false);
 
 public sealed record DisputeHandoverHorseRequest(
     string IssueNote,

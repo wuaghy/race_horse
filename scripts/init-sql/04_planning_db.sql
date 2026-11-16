@@ -42,6 +42,12 @@ CREATE TABLE TransportTrips (
     Id                  UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),
     TripNo              VARCHAR(50)      NOT NULL,
     OrderId             UNIQUEIDENTIFIER NOT NULL,   -- logical ref -> BookingDb.TransportOrders (1:1)
+    RequestId           UNIQUEIDENTIFIER NULL,       -- logical ref -> BookingDb.TransportRequests
+    OriginLocationId    UNIQUEIDENTIFIER NULL,       -- copied from the approved booking request
+    DestinationLocationId UNIQUEIDENTIFIER NULL,     -- copied from the approved booking request
+    RequestedDepartureAt DATETIME2(3)    NULL,
+    RequestedArrivalAt  DATETIME2(3)     NULL,
+    PreferredTransportMode VARCHAR(30)   NULL,
     Status              VARCHAR(40)      NOT NULL,   -- PLANNED, READY, DEPARTED, IN_TRANSIT, DELAYED,
                                                       -- ARRIVED, HANDED_OVER, COMPLETED, CANCELLED
     PlannedDepartureAt  DATETIME2(3)     NULL,
@@ -119,6 +125,9 @@ CREATE TABLE FlightBookings (
     ScheduledArrivalAt      DATETIME2(3)     NOT NULL,
     ActualDepartureAt       DATETIME2(3)     NULL,
     ActualArrivalAt         DATETIME2(3)     NULL,
+    ConfirmationStatus      VARCHAR(20)      NOT NULL CONSTRAINT DF_FlightBookings_ConfirmationStatus DEFAULT 'PENDING',
+    ConfirmedAt             DATETIME2(3)     NULL,
+    ConfirmedByUserId       UNIQUEIDENTIFIER NULL,
     CONSTRAINT PK_FlightBookings PRIMARY KEY CLUSTERED (Id),
     CONSTRAINT UQ_FlightBookings_Ref UNIQUE (BookingReference),
     CONSTRAINT FK_FlightBookings_Airlines FOREIGN KEY (AirlineId) REFERENCES Airlines (Id),
