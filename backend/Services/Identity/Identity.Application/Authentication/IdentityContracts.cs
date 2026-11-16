@@ -9,6 +9,9 @@ public sealed record AuthUser(
     string? PasswordHash,
     string Status);
 
+public sealed record StaffDirectoryAccount(Guid Id, string Email, string FullName, string Role);
+public sealed record StaffDisplayName(Guid Id, string FullName);
+
 public sealed record AuthenticatedIdentity(Guid Id, string Email, string FullName, string Role);
 
 public sealed record IssuedAccessToken(string Value, DateTimeOffset ExpiresAt);
@@ -44,6 +47,11 @@ public interface IIdentityTokenService
     string HashRefreshToken(string token);
 }
 
+public interface ICustomerProfileProvisioner
+{
+    Task ProvisionAsync(Guid identityUserId, string email, string fullName, string? phone, CancellationToken cancellationToken);
+}
+
 public interface IIdentityAuthService
 {
     Task<AuthSessionResult> RegisterCustomerAsync(RegisterCustomerCommand command, CancellationToken cancellationToken);
@@ -57,6 +65,10 @@ public interface IIdentityAuthService
 
 public interface IIdentityStore
 {
+    Task<IReadOnlyList<StaffDirectoryAccount>> ListStaffAccountsAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<StaffDisplayName>> GetStaffDisplayNamesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken);
+
     Task<AuthUser?> FindByEmailAsync(string email, CancellationToken cancellationToken);
 
     Task<AuthUser?> FindByIdAsync(Guid id, CancellationToken cancellationToken);
@@ -78,6 +90,8 @@ public interface IIdentityStore
         DateTimeOffset refreshTokenExpiresAt,
         string? deviceInfo,
         CancellationToken cancellationToken);
+
+    Task DeleteNewCustomerAsync(Guid userId, CancellationToken cancellationToken);
 
     Task AddRefreshTokenAsync(
         Guid userId,

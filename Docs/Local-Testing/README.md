@@ -1,6 +1,6 @@
 # Local API Testing
 
-This guide covers the local Identity and Booking APIs delivered for tasks T01-T05. The React Native client is not required for API testing.
+This guide covers local API testing. The React/Vite web client is not required for direct API testing.
 
 ## Start the Stack
 
@@ -11,17 +11,22 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 $bytes = New-Object byte[] 48
 [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
 $env:JWT_SIGNING_KEY = [Convert]::ToBase64String($bytes)
+$env:MSSQL_SA_PASSWORD = '<set-a-strong-local-sql-password>'
+$env:RABBITMQ_DEFAULT_USER = '<set-a-local-rabbitmq-user>'
+$env:RABBITMQ_DEFAULT_PASS = '<set-a-strong-local-rabbitmq-password>'
+$env:MINIO_ROOT_USER = '<set-a-local-minio-user>'
+$env:MINIO_ROOT_PASSWORD = '<set-a-strong-local-minio-password>'
 $env:SEED_DEMO_DATA = 'true'
-$env:DEMO_DATA_PASSWORD = 'HorseDev2026!'
+$env:DEMO_DATA_PASSWORD = '<set-a-local-demo-password>'
 docker compose up -d --build
 docker compose ps
 ```
 
-The process-level `JWT_SIGNING_KEY` overrides the placeholder in `.env`; the same key is passed to Identity, Booking, and Gateway. Keep this PowerShell session open when issuing further Compose commands so Compose receives the same key. The generated key is ephemeral; create a new one when starting a fresh local stack/session. Never commit `.env` or use these demo values outside a disposable development environment.
+The process-level values override the blank template entries in `.env`. Keep this PowerShell session open when issuing further Compose commands so Compose receives the same values. The generated JWT key is ephemeral; create a new one when starting a fresh local stack/session. Never commit `.env` or use local credentials in a shared or production environment.
 
-`SEED_DEMO_DATA` defaults to `false`. Set it to `true` before the first startup to create the sample Booking records and hashed Identity demo accounts. Seeding is idempotent and does not reset existing records. `DEMO_DATA_PASSWORD` can be changed; it must contain at least 12 characters. Do not enable demo seeding in a shared or production environment.
+`SEED_DEMO_DATA` defaults to `false`. Set it to `true` before the first startup to create the sample Booking records and hashed Identity demo accounts. Seeding is idempotent and does not reset existing records. `DEMO_DATA_PASSWORD` can be changed; it must contain at least 8 characters. Do not enable demo seeding in a shared or production environment.
 
-To start without the sample data, set `$env:SEED_DEMO_DATA = 'false'` and still provide a JWT key before `docker compose up -d --build`.
+To start without sample data, set `$env:SEED_DEMO_DATA = 'false'`. JWT, SQL Server, RabbitMQ, and MinIO credentials are still required before `docker compose up -d --build`.
 
 Check readiness and startup failures with:
 
@@ -35,7 +40,7 @@ Swagger UI is available at:
 
 | API | URL | Use |
 |---|---|---|
-| Gateway | `http://localhost:8080/health` | Public entrypoint health check |
+| Gateway hub | `http://localhost:8080/swagger` | Dropdown for Gateway and all eight services |
 | Identity | `http://localhost:8081/swagger` | Register/login/refresh/logout/me |
 | Booking | `http://localhost:8082/swagger` | Customer, horse, request, and manager operations |
 
@@ -49,8 +54,9 @@ When demo seeding is enabled:
 |---|---|---|
 | Customer | `customer.demo@racehorse.local` | Value of `DEMO_DATA_PASSWORD` |
 | Logistics manager | `manager.demo@racehorse.local` | Value of `DEMO_DATA_PASSWORD` |
+| Horse escort | `escort.demo@racehorse.local` | Value of `DEMO_DATA_PASSWORD` |
 
-The local fallback password is `HorseDev2026!`. Override it before Compose startup if desired. Demo accounts are reset to that password when the Identity API starts with demo seeding enabled.
+There is no committed fallback password. Set `DEMO_DATA_PASSWORD` before Compose startup when demo seeding is enabled. Demo accounts are reset to that configured password when the Identity API starts with demo seeding enabled.
 
 ## Sample Booking Data
 
@@ -61,11 +67,13 @@ The Booking seed creates a profile linked to the demo customer plus:
 | Horse | `DEMO-HORSE-001` (`Silver Comet`) | `ACTIVE` |
 | Horse | `DEMO-HORSE-002` (`Morning Star`) | `ACTIVE` |
 | Horse | `DEMO-HORSE-003` (`Riverstone`) | `ACTIVE` |
+| Horse | `DEMO-HORSE-006` (`Six Flow Runner`) | `ACTIVE`, reserved for the local six-flow walkthrough |
 | Draft request | `DEMO-REQ-DRAFT-001` | `DRAFT`, one horse |
 | Manager queue request | `DEMO-REQ-QUEUE-001` | `SUBMITTED`, two horses |
 | Manager queue request | `DEMO-REQ-QUEUE-002` | `SUBMITTED`, one horse |
 | Manager decision request | `DEMO-REQ-REVIEW-001` | `UNDER_REVIEW`, assigned to the demo manager |
 | Customer follow-up request | `DEMO-REQ-INFO-001` | `NEED_INFORMATION`, with a return reason |
+| Six-flow request | `DEMO-REQ-SIX-FLOW-001` | `SUBMITTED`, uses only `DEMO-HORSE-006`; no order, trip, documents or assignments yet |
 
 Origin and destination are logical Planning IDs. This local Booking slice does not verify those IDs against PlanningDb.
 
@@ -83,7 +91,7 @@ Login request example:
 ```json
 {
   "email": "customer.demo@racehorse.local",
-  "password": "HorseDev2026!",
+  "password": "<value-of-DEMO_DATA_PASSWORD>",
   "deviceInfo": "swagger-local"
 }
 ```

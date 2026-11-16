@@ -31,5 +31,11 @@ public class TransportRequestInputValidator : AbstractValidator<TransportRequest
         RuleFor(x => x.HorseIds)
             .NotEmpty().WithMessage("At least one horse must be specified.")
             .When(x => x.HorseIds != null);
+
+        RuleFor(x => x.CustomPickupLatitude).InclusiveBetween(-90m, 90m).When(x => x.CustomPickupLatitude.HasValue);
+        RuleFor(x => x.CustomPickupLongitude).InclusiveBetween(-180m, 180m).When(x => x.CustomPickupLongitude.HasValue);
+        RuleFor(x => x).Must(x => x.CustomPickupLatitude.HasValue == x.CustomPickupLongitude.HasValue)
+            .WithMessage("Custom pickup latitude and longitude must be provided together.");
+        RuleFor(x => x.CustomPickupLabel).MaximumLength(300).When(x => !string.IsNullOrEmpty(x.CustomPickupLabel));
     }
 }

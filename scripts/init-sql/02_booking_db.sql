@@ -68,6 +68,10 @@ CREATE TABLE TransportRequests (
     PreferredTransportMode  VARCHAR(30)      NULL,       -- ROAD, AIR, MIXED
     SpecialRequirements     NVARCHAR(2000)   NULL,
     Notes                   NVARCHAR(2000)   NULL,
+    RecipientIsRequester    BIT              NOT NULL DEFAULT 1,
+    RecipientName           NVARCHAR(200)    NULL,
+    RecipientPhone          VARCHAR(50)      NULL,
+    RecipientEmail          VARCHAR(255)     NULL,
     Status                  VARCHAR(40)      NOT NULL,   -- DRAFT, SUBMITTED, UNDER_REVIEW,
                                                           -- NEED_INFORMATION, APPROVED, REJECTED, CANCELLED
     RejectionReason         NVARCHAR(1000)   NULL,
@@ -88,6 +92,7 @@ CREATE TABLE TransportRequests (
 CREATE INDEX IX_TransportRequests_CustomerId ON TransportRequests (CustomerId);
 CREATE INDEX IX_TransportRequests_Status ON TransportRequests (Status);
 CREATE INDEX IX_TransportRequests_AssignedManagerUserId ON TransportRequests (AssignedManagerUserId);
+
 
 CREATE TABLE TransportRequestHorses (
     Id              UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),

@@ -18,7 +18,7 @@ public class NotificationService : INotificationService
         _logger = logger;
     }
 
-    public async Task<PagedResult<NotificationDto>> GetUserNotificationsAsync(Guid userId, bool? unreadOnly, int page, int pageSize, CancellationToken ct = default)
+    public async Task<PagedResult<NotificationDto>> GetUserNotificationsAsync(Guid userId, bool? unreadOnly, int page, int pageSize, string? search = null, string? sortDirection = null, CancellationToken ct = default)
     {
         var query = _db.Notifications.AsNoTracking()
             .Where(n => n.RecipientUserId == userId);
@@ -27,14 +27,21 @@ public class NotificationService : INotificationService
         {
             query = query.Where(n => n.Status != "READ");
         }
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(n => n.Title.Contains(term) || n.Message.Contains(term) || n.Type.Contains(term));
+        }
 
         var totalCount = await query.CountAsync(ct);
 
         var pageNumber = Math.Max(1, page);
         var size = Math.Clamp(pageSize, 1, 100);
 
-        var items = await query
-            .OrderByDescending(n => n.CreatedAt)
+        var ordered = string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase)
+            ? query.OrderBy(n => n.CreatedAt)
+            : query.OrderByDescending(n => n.CreatedAt);
+        var items = await ordered
             .Skip((pageNumber - 1) * size)
             .Take(size)
             .Select(n => new NotificationDto(

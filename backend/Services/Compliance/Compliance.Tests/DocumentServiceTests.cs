@@ -57,11 +57,11 @@ public class DocumentServiceTests
         var horse2 = Guid.NewGuid();
 
         await svc.UploadDocumentAsync(Guid.NewGuid(),
-            new UploadDocumentRequest(docType.Id, horse1, null, null, "a.pdf", "url/a", 100, "application/pdf", null, null, null),
+            new UploadDocumentRequest(docType.Id, horse1, null, null, "a.pdf", "url/a", 100, "application/pdf", null, DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1)), null),
             CancellationToken.None);
 
         await svc.UploadDocumentAsync(Guid.NewGuid(),
-            new UploadDocumentRequest(docType.Id, horse2, null, null, "b.pdf", "url/b", 200, "application/pdf", null, null, null),
+            new UploadDocumentRequest(docType.Id, horse2, null, null, "b.pdf", "url/b", 200, "application/pdf", null, DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1)), null),
             CancellationToken.None);
 
         var filter = new DocumentFilter(horse1, null, null, null, null);
@@ -93,7 +93,7 @@ public class DocumentServiceTests
             CancellationToken.None);
 
         var doc = await svc.UploadDocumentAsync(Guid.NewGuid(),
-            new UploadDocumentRequest(docType.Id, Guid.NewGuid(), null, null, "vet.pdf", "url/vet", 500, "application/pdf", null, null, null),
+            new UploadDocumentRequest(docType.Id, Guid.NewGuid(), null, null, "vet.pdf", "url/vet", 500, "application/pdf", null, DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1)), null),
             CancellationToken.None);
 
         var reviewerId = Guid.NewGuid();
@@ -123,7 +123,7 @@ public class DocumentServiceTests
             CancellationToken.None);
 
         var doc = await svc.UploadDocumentAsync(Guid.NewGuid(),
-            new UploadDocumentRequest(docType.Id, null, null, Guid.NewGuid(), "permit.pdf", "url/permit", 300, "application/pdf", null, null, null),
+            new UploadDocumentRequest(docType.Id, null, null, Guid.NewGuid(), "permit.pdf", "url/permit", 300, "application/pdf", null, DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1)), null),
             CancellationToken.None);
 
         var result = await svc.ReviewDocumentAsync(

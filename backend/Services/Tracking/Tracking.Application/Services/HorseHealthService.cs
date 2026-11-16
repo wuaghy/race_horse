@@ -147,7 +147,7 @@ public class HorseHealthService : IHorseHealthService
                 Severity = alert.Severity,
                 Message = alert.Message,
                 AlertAt = alert.AlertedAt
-            }),
+            }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             CorrelationId = Guid.NewGuid(),
             OccurredAt = DateTime.UtcNow,
             Status = "PENDING"

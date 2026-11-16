@@ -39,7 +39,7 @@ CREATE TABLE DeviceTokens (
 CREATE INDEX IX_DeviceTokens_UserId_Active ON DeviceTokens (UserId) WHERE Active = 1;
 
 /* ---------------------------------------------------------
-   InboxMessages — idempotent consumer log (docs/ARCHITECTURE.md §8:
+   InboxMessages — idempotent consumer log (docs/data/model.md:
    "idempotent event handlers"; docs/INTEGRATION_EVENTS.md §3).
    Notification consumes almost every event in the system, so its
    consumer idempotency table is included here explicitly.

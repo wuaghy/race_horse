@@ -15,6 +15,44 @@ public sealed class SqlIdentityStore : IIdentityStore
             ?? throw new InvalidOperationException("ConnectionStrings:IdentityDb must be configured.");
     }
 
+    public async Task<IReadOnlyList<StaffDirectoryAccount>> ListStaffAccountsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(
+            "SELECT u.Id, u.Email, u.FullName, r.Code " +
+            "FROM dbo.Users AS u INNER JOIN dbo.Roles AS r ON r.Id = u.RoleId " +
+            "WHERE u.Status = 'ACTIVE' AND r.Code IN ('DRIVER', 'ESCORT', 'DRIVER_ESCORT') " +
+            "ORDER BY u.FullName, u.Email;",
+            connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var accounts = new List<StaffDirectoryAccount>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            accounts.Add(new StaffDirectoryAccount(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+        }
+        return accounts;
+    }
+
+    public async Task<IReadOnlyList<StaffDisplayName>> GetStaffDisplayNamesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0) return [];
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        var parameters = userIds.Select((_, index) => $"@UserId{index}").ToArray();
+        await using var command = new SqlCommand(
+            "SELECT u.Id, u.FullName FROM dbo.Users u INNER JOIN dbo.Roles r ON r.Id = u.RoleId " +
+            $"WHERE r.Code <> 'CUSTOMER' AND u.Id IN ({string.Join(",", parameters)});", connection);
+        var index = 0;
+        foreach (var userId in userIds)
+            command.Parameters.Add(parameters[index++], SqlDbType.UniqueIdentifier).Value = userId;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var names = new List<StaffDisplayName>();
+        while (await reader.ReadAsync(cancellationToken))
+            names.Add(new StaffDisplayName(reader.GetGuid(0), reader.GetString(1)));
+        return names;
+    }
+
     public async Task<AuthUser?> FindByEmailAsync(string email, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(_connectionString);
@@ -142,6 +180,41 @@ public sealed class SqlIdentityStore : IIdentityStore
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await InsertRefreshTokenAsync(connection, null, userId, tokenHash, expiresAt, deviceInfo, cancellationToken);
+    }
+
+    public async Task DeleteNewCustomerAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using (var deleteTokens = new SqlCommand(
+                "DELETE FROM dbo.RefreshTokens WHERE UserId = @UserId;",
+                connection,
+                transaction))
+            {
+                deleteTokens.Parameters.Add("@UserId", SqlDbType.UniqueIdentifier).Value = userId;
+                await deleteTokens.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var deleteUser = new SqlCommand(
+                "DELETE u FROM dbo.Users u INNER JOIN dbo.Roles r ON r.Id = u.RoleId " +
+                "WHERE u.Id = @UserId AND r.Code = 'CUSTOMER';",
+                connection,
+                transaction))
+            {
+                deleteUser.Parameters.Add("@UserId", SqlDbType.UniqueIdentifier).Value = userId;
+                await deleteUser.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     public async Task<AuthUser?> RotateRefreshTokenAsync(

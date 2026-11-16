@@ -34,9 +34,9 @@ public static class CustomerHorseEndpoints
 
         var horses = app.MapGroup("/api/v1/horses")
             .RequireAuthorization("Customer");
-        horses.MapGet("/", async (int? page, int? pageSize, string? search, ClaimsPrincipal principal, ICustomerHorseService service, HttpContext context, CancellationToken cancellationToken) =>
+        horses.MapGet("/", async (int? page, int? pageSize, string? search, string? status, string? sortBy, string? sortDirection, ClaimsPrincipal principal, ICustomerHorseService service, HttpContext context, CancellationToken cancellationToken) =>
         {
-            var result = await service.GetHorsesAsync(GetUserId(principal), page ?? 0, pageSize ?? 20, search, cancellationToken);
+            var result = await service.GetHorsesAsync(GetUserId(principal), page ?? 0, pageSize ?? 20, search, status, sortBy, sortDirection, cancellationToken);
             var pagination = new PaginationMeta
             {
                 Page = result.Page,
@@ -88,6 +88,7 @@ public static class CustomerHorseEndpoints
         request.DateOfBirth,
         request.Color,
         request.CountryOfOriginId,
+        request.CountryOfOriginName,
         request.SpecialRequirements,
         versionNo);
 }
@@ -137,6 +138,9 @@ public sealed record SaveHorseRequest
     public string? Color { get; init; }
 
     public Guid? CountryOfOriginId { get; init; }
+
+    [MaxLength(120)]
+    public string? CountryOfOriginName { get; init; }
 
     [MaxLength(1000)]
     public string? SpecialRequirements { get; init; }

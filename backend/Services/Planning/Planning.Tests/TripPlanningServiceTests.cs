@@ -50,7 +50,7 @@ public class TripPlanningServiceTests
         Assert.NotEqual(version.Id, newVersion.Id);
 
         // Can add leg to new DRAFT version
-        var newLeg = await svc.AddLegAsync(newVersion.Id, new RouteLegInput(1, locA.Id, locB.Id, "ROAD", now, now.AddHours(3)));
+        var newLeg = await svc.AddLegAsync(newVersion.Id, new RouteLegInput(2, locA.Id, locB.Id, "ROAD", now, now.AddHours(3)));
         Assert.NotNull(newLeg);
     }
 
@@ -66,8 +66,8 @@ public class TripPlanningServiceTests
         db.Vehicles.Add(vehicle);
         await db.SaveChangesAsync();
 
-        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id };
-        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id };
+        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id, Latitude = 10.0m, Longitude = 106.0m };
+        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id, Latitude = 10.1m, Longitude = 106.1m };
         db.Locations.AddRange(locA, locB);
         await db.SaveChangesAsync();
 
@@ -105,8 +105,8 @@ public class TripPlanningServiceTests
         db.Countries.Add(country);
         await db.SaveChangesAsync();
 
-        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id };
-        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id };
+        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id, Latitude = 10.0m, Longitude = 106.0m };
+        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id, Latitude = 10.1m, Longitude = 106.1m };
         db.Locations.AddRange(locA, locB);
         await db.SaveChangesAsync();
 
@@ -121,6 +121,9 @@ public class TripPlanningServiceTests
         var leg2 = await svc.AddLegAsync(version.Id, new RouteLegInput(2, locB.Id, locA.Id, "ROAD", from.AddHours(2), to.AddHours(3)));
 
         var staffUserId = Guid.NewGuid();
+        db.StaffRouteCountryAuthorizations.Add(new StaffRouteCountryAuthorization { UserId = staffUserId, CountryId = country.Id });
+        db.StaffOperatingAreas.Add(new StaffOperatingArea { UserId = staffUserId, LocationId = locA.Id, RadiusKm = 200 });
+        await db.SaveChangesAsync();
 
         // Assign staff to leg 1: OK
         await svc.AssignStaffAsync(trip.Id, new StaffInput(leg1.Id, staffUserId, "DRIVER"));
@@ -174,11 +177,13 @@ public class TripPlanningServiceTests
         var svc = new TripPlanningService(db);
 
         var country = new Country { IsoCode = "VN", Name = "Vietnam", Active = true };
+        var vehicle = new Vehicle { VehicleCode = "V-LIFECYCLE", PlateNumber = "51H-54321", VehicleType = "TRUCK", HorseCapacity = 4, StallCapacity = 4, Status = "AVAILABLE" };
         db.Countries.Add(country);
+        db.Vehicles.Add(vehicle);
         await db.SaveChangesAsync();
 
-        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id };
-        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id };
+        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id, Latitude = 10.0m, Longitude = 106.0m };
+        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id, Latitude = 10.1m, Longitude = 106.1m };
         db.Locations.AddRange(locA, locB);
         await db.SaveChangesAsync();
 
@@ -187,7 +192,14 @@ public class TripPlanningServiceTests
         var version = (await svc.GetVersionsAsync(plan.Id)).Single();
 
         var now = DateTime.UtcNow.AddDays(1);
-        await svc.AddLegAsync(version.Id, new RouteLegInput(1, locA.Id, locB.Id, "ROAD", now, now.AddHours(3)));
+        var leg = await svc.AddLegAsync(version.Id, new RouteLegInput(1, locA.Id, locB.Id, "ROAD", now, now.AddHours(3)));
+        await svc.AssignResourceAsync(leg.Id, new ResourceInput(vehicle.Id, null));
+        var driverId = Guid.NewGuid();
+        db.StaffRouteCountryAuthorizations.Add(new StaffRouteCountryAuthorization { UserId = driverId, CountryId = country.Id });
+        db.StaffOperatingAreas.Add(new StaffOperatingArea { UserId = driverId, LocationId = locA.Id, RadiusKm = 200 });
+        await db.SaveChangesAsync();
+        await svc.AssignStaffAsync(trip.Id, new StaffInput(leg.Id, driverId, PlanningConstants.StaffRole.Driver));
+        await svc.AssignStaffAsync(trip.Id, new StaffInput(leg.Id, Guid.NewGuid(), PlanningConstants.StaffRole.Escort));
 
         // Submit: DRAFT -> PENDING_APPROVAL
         var submitted = await svc.SubmitRouteVersionAsync(version.Id, Guid.NewGuid());
@@ -211,15 +223,69 @@ public class TripPlanningServiceTests
         Assert.NotNull(outbox);
     }
 
+    [Fact]
+    public async Task EmergencyRouteChange_CreatesVersion_RequiresApproval_AndArchivesPriorRouteOnApply()
+    {
+        using var db = TestDbContextFactory.Create();
+        var svc = new TripPlanningService(db);
+        var (trip, plan, activeVersion, locA, locB) = await SetupActiveRouteTripAsync(db, svc);
+        var coordinatorId = Guid.NewGuid();
+
+        var proposal = await svc.CreateRouteChangeProposalAsync(
+            trip.Id,
+            coordinatorId,
+            new CreateRouteChangeRequestInput("Flooded road", 95, 125.50m, "USD"),
+            Guid.NewGuid());
+
+        Assert.Equal(PlanningConstants.RouteVersionStatus.Draft, proposal.Status);
+        Assert.Equal(95, proposal.EstimatedDurationMinutes);
+        Assert.Equal(125.50m, proposal.AdditionalCost);
+        Assert.Equal("USD", proposal.CurrencyCode);
+        Assert.Equal(activeVersion.Id, (await db.RoutePlans.SingleAsync(x => x.Id == plan.Id)).ActiveVersionId);
+
+        var departure = DateTime.UtcNow.AddDays(2);
+        await svc.AddLegAsync(proposal.Id, new RouteLegInput(2, locA.Id, locB.Id, "ROAD", departure, departure.AddHours(3)));
+        var proposalLegs = await db.RouteLegs.Where(leg => leg.RoutePlanVersionId == proposal.Id).OrderBy(leg => leg.SequenceNo).ToListAsync();
+        var vehicleId = await db.Vehicles.Select(vehicle => vehicle.Id).SingleAsync();
+        foreach (var proposalLeg in proposalLegs)
+            await svc.AssignResourceAsync(proposalLeg.Id, new ResourceInput(vehicleId, null));
+
+        // The active driver/escort remain booked on the old version until activation,
+        // so the proposed version receives a newly authorized, available crew.
+        var countryId = await db.Countries.Select(country => country.Id).SingleAsync();
+        var proposalDriverId = Guid.NewGuid();
+        db.StaffRouteCountryAuthorizations.Add(new StaffRouteCountryAuthorization { UserId = proposalDriverId, CountryId = countryId });
+        db.StaffOperatingAreas.Add(new StaffOperatingArea { UserId = proposalDriverId, LocationId = locA.Id, RadiusKm = 200 });
+        await db.SaveChangesAsync();
+        var proposalEscortId = Guid.NewGuid();
+        foreach (var proposalLeg in proposalLegs)
+        {
+            await svc.AssignStaffAsync(trip.Id, new StaffInput(proposalLeg.Id, proposalDriverId, PlanningConstants.StaffRole.Driver));
+            await svc.AssignStaffAsync(trip.Id, new StaffInput(proposalLeg.Id, proposalEscortId, PlanningConstants.StaffRole.Escort));
+        }
+        await svc.SubmitRouteVersionAsync(proposal.Id, coordinatorId);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => svc.ActivateRouteVersionAsync(proposal.Id, coordinatorId));
+        await svc.ApproveRouteVersionAsync(proposal.Id, Guid.NewGuid());
+        await svc.ActivateRouteVersionAsync(proposal.Id, Guid.NewGuid());
+
+        Assert.Equal(PlanningConstants.RouteVersionStatus.Archived,
+            (await db.RoutePlanVersions.SingleAsync(x => x.Id == activeVersion.Id)).Status);
+        Assert.Equal("Planning.RouteChangeApplied",
+            (await db.OutboxMessages.SingleAsync(x => x.AggregateId == proposal.Id)).EventType);
+        Assert.Contains(await db.AuditLogs.Where(x => x.EntityId == proposal.Id).ToListAsync(), x => x.Action == "ROUTE_CHANGE_PROPOSED");
+    }
+
     private static async Task<(TripDto Trip, RoutePlanDto Plan, RoutePlanVersionDto Version, Location LocA, Location LocB)>
         SetupActiveRouteTripAsync(PlanningDbContext db, TripPlanningService svc)
     {
         var country = new Country { IsoCode = "VN", Name = "Vietnam", Active = true };
+        var vehicle = new Vehicle { VehicleCode = "V-HELPER", PlateNumber = "51H-67890", VehicleType = "TRUCK", HorseCapacity = 4, StallCapacity = 4, Status = "AVAILABLE" };
         db.Countries.Add(country);
+        db.Vehicles.Add(vehicle);
         await db.SaveChangesAsync();
 
-        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id };
-        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id };
+        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id, Latitude = 10.0m, Longitude = 106.0m };
+        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id, Latitude = 10.1m, Longitude = 106.1m };
         db.Locations.AddRange(locA, locB);
         await db.SaveChangesAsync();
 
@@ -228,7 +294,14 @@ public class TripPlanningServiceTests
         var version = (await svc.GetVersionsAsync(plan.Id)).Single();
 
         var now = DateTime.UtcNow.AddDays(1);
-        await svc.AddLegAsync(version.Id, new RouteLegInput(1, locA.Id, locB.Id, "ROAD", now, now.AddHours(3)));
+        var leg = await svc.AddLegAsync(version.Id, new RouteLegInput(1, locA.Id, locB.Id, "ROAD", now, now.AddHours(3)));
+        await svc.AssignResourceAsync(leg.Id, new ResourceInput(vehicle.Id, null));
+        var driverId = Guid.NewGuid();
+        db.StaffRouteCountryAuthorizations.Add(new StaffRouteCountryAuthorization { UserId = driverId, CountryId = country.Id });
+        db.StaffOperatingAreas.Add(new StaffOperatingArea { UserId = driverId, LocationId = locA.Id, RadiusKm = 200 });
+        await db.SaveChangesAsync();
+        await svc.AssignStaffAsync(trip.Id, new StaffInput(leg.Id, driverId, PlanningConstants.StaffRole.Driver));
+        await svc.AssignStaffAsync(trip.Id, new StaffInput(leg.Id, Guid.NewGuid(), PlanningConstants.StaffRole.Escort));
 
         await svc.SubmitRouteVersionAsync(version.Id, Guid.NewGuid());
         await svc.ApproveRouteVersionAsync(version.Id, Guid.NewGuid());

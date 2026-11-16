@@ -121,6 +121,7 @@ public class ComplianceDbContext : DbContext, IComplianceDbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.CaseNo).HasMaxLength(50).IsRequired();
             entity.HasIndex(e => e.CaseNo).IsUnique();
+            entity.Property(e => e.ClearanceType).HasMaxLength(30).IsRequired();
             entity.Property(e => e.AuthorityName).HasMaxLength(255).IsRequired();
             entity.Property(e => e.ReferenceNumber).HasMaxLength(100);
             entity.Property(e => e.Status).HasMaxLength(40).IsRequired();

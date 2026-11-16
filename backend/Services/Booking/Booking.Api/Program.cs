@@ -1,14 +1,24 @@
 using BuildingBlocks.Api;
 using BuildingBlocks.Middleware;
 using Booking.Api.Customers;
+using Booking.Api.Dashboard;
+using Booking.Api.Grpc;
 using Booking.Api.TransportRequests;
+using Booking.Api.Payments;
 using Booking.Infrastructure;
+using Contracts.Grpc.Planning;
+using Contracts.Grpc.Compliance;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddGrpc();
+var planningGrpcAddress = builder.Configuration["PlanningGrpc:Address"] ?? "http://localhost:5022";
+builder.Services.AddGrpcClient<PlanningQuery.PlanningQueryClient>(options => options.Address = new Uri(planningGrpcAddress));
+var complianceGrpcAddress = builder.Configuration["ComplianceGrpc:Address"] ?? "http://localhost:5023";
+builder.Services.AddGrpcClient<ComplianceQuery.ComplianceQueryClient>(options => options.Address = new Uri(complianceGrpcAddress));
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -95,5 +105,8 @@ app.MapGet("/health", (HttpContext context) =>
 
 app.MapCustomerHorseEndpoints();
 app.MapTransportRequestEndpoints();
+app.MapPaymentEndpoints();
+app.MapBookingDashboardEndpoints();
+app.MapGrpcService<CustomerProfileProvisioningGrpcService>();
 
 app.Run();

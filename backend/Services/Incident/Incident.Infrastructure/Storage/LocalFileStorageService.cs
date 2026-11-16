@@ -1,4 +1,5 @@
 using Incident.Application.Abstractions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Incident.Infrastructure.Storage;
@@ -8,10 +9,12 @@ public class LocalFileStorageService : IFileStorageService
     private readonly string _storageDirectory;
     private readonly ILogger<LocalFileStorageService> _logger;
 
-    public LocalFileStorageService(ILogger<LocalFileStorageService> logger)
+    public LocalFileStorageService(ILogger<LocalFileStorageService> logger, IConfiguration configuration)
     {
         _logger = logger;
-        _storageDirectory = Path.Combine(AppContext.BaseDirectory, "incident-uploads");
+        _storageDirectory = configuration["Storage:LocalDirectory"]
+            ?? Path.Combine(AppContext.BaseDirectory, "incident-uploads");
+        _storageDirectory = Path.GetFullPath(_storageDirectory);
         if (!Directory.Exists(_storageDirectory))
         {
             Directory.CreateDirectory(_storageDirectory);

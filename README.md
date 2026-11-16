@@ -1,61 +1,24 @@
-# Cross-Border Racehorse Transport System
+# EquiRoute backend
 
-Hệ thống Quản lý Vận chuyển Ngựa đua Xuyên Quốc gia (PRN232 - Microservices Architecture).
+Backend workspace for the EquiRoute cross-border horse transport app. The canonical, source-audited documentation is in [../../docs/README.md](../../docs/README.md); this file only covers backend startup and directory orientation.
 
-## 1. Công nghệ sử dụng
+## Stack
 
-- **Backend**: .NET 10 / ASP.NET Core Web API (C#)
-- **Kiến trúc**: Microservices (Clean Architecture: Domain, Application, Infrastructure, Api)
-- **API Gateway**: YARP (Yet Another Reverse Proxy)
-- **Message Broker**: RabbitMQ (Integration Events qua Outbox / Inbox Pattern)
-- **Database**: SQL Server (Database-per-service: 8 cơ sở dữ liệu riêng biệt)
-- **Object Storage**: S3-compatible (MinIO / AWS S3)
-- **Client**: React Native (TypeScript)
+- .NET 10 ASP.NET Core services behind a YARP gateway.
+- SQL Server 2022 with eight service-owned logical databases; RabbitMQ for asynchronous events.
+- Identity and Booking use SQL client stores. Compliance, Planning, Tracking, Incident, Handover and Notification use EF Core.
+- Compose also starts MinIO and initializes buckets, but current document/attachment/signature adapters use local filesystem volumes.
 
-## 2. Ranh giới Microservices
+## Run locally
 
-Hệ thống được module hóa thành 8 microservices độc lập:
+From this directory, prepare `.env` from `.env.example`, replace development secrets, then start the Compose stack:
 
-1. **Identity Service** (`IdentityDb`): Xác thực người dùng, phân quyền RBAC (6 Roles), JWT token rotation, AuditLog.
-2. **Booking Service** (`BookingDb`): Quản lý khách hàng, hồ sơ ngựa, yêu cầu vận chuyển (`TransportRequest`), đơn hàng (`TransportOrder`).
-3. **Compliance Service** (`ComplianceDb`): Quy định kiểm dịch quốc tế, thẩm định giấy tờ y tế/hộ chiếu, hồ sơ thông quan (`ClearanceCase`).
-4. **Planning Service** (`PlanningDb`): Lập kế hoạch chuyến đi (`TransportTrip`), lộ trình đa phiên bản (`RoutePlans` & `RoutePlanVersions`), phân bổ xe tải, khoang máy bay, chuồng (`Stall`) và nhân sự.
-5. **Tracking Service** (`TrackingDb`): Mốc hành trình (`TripEvents`), tọa độ GPS (`TripLocations`), nhật ký sức khỏe định kỳ (`HorseHealthLogs`).
-6. **Incident Service** (`IncidentDb`): Ghi nhận và xử lý sự cố khẩn cấp (`Incidents`), ảnh bằng chứng hiện trường.
-7. **Handover Service** (`HandoverDb`): Biên bản nghiệm thu bàn giao (`HandoverRecords`), nghiệm thu thể trạng từng con ngựa, chữ ký số điện tử, chi phí & doanh thu chuyến đi.
-8. **Notification Service** (`NotificationDb`): Trung tâm thông báo, push notification token, cơ chế Idempotent Consumer (`InboxMessages`).
-
-## 3. Khởi chạy nhanh (Local Development)
-
-### Bước 1: Khởi động Hạ tầng Docker (SQL Server, RabbitMQ, MinIO)
-```bash
-# Bật các container hạ tầng
+~~~powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+# Edit .env before starting the services.
 docker compose up -d
-```
-Quá trình khởi tạo sẽ tự động:
-- Khởi chạy SQL Server 2022 và tự động chạy script tạo đủ 8 database cùng schema DDL.
-- Khởi chạy RabbitMQ (Cổng AMQP: `5672`, Management UI: `http://localhost:15672`).
-- Khởi chạy MinIO (API: `9000`, Web Console: `http://localhost:9001`) và tạo sẵn 4 buckets: `documents`, `health-images`, `incident-attachments`, `signatures`.
+~~~
 
-### Bước 2: Build Solution .NET
-```bash
-# Build toàn bộ 35 projects
-dotnet build RacehorseTransport.sln
-```
+Gateway: `http://localhost:8080`. The React client lives in `../../FE/horse_race`; see the [frontend guide](../../docs/architecture/frontend.md). Swagger UI and generated service OpenAPI documents are enabled only in Development; the Gateway UI is at `/swagger` when that environment is active.
 
-## 4. Cấu trúc thư mục
-
-```text
-├── Docs/                              # Tài liệu phân tích nghiệp vụ, ERD và DBML
-├── scripts/
-│   └── init-sql/                      # Script T-SQL tự động khởi tạo 8 databases
-├── backend/
-│   ├── Directory.Build.props          # Cấu hình chung .NET 10 cho toàn bộ project
-│   ├── BuildingBlocks/                # Thư viện dùng chung (Response envelope, Exceptions, Middlewares)
-│   ├── Contracts/                     # Envelope Integration Events dùng chung
-│   ├── Gateway/                       # Gateway YARP
-│   └── Services/                      # 8 Microservices (Clean Architecture)
-├── docker-compose.yml
-├── .env.example
-└── RacehorseTransport.sln
-```
+Compose applies the T-SQL bootstrap and additive scripts in `scripts/init-sql/`. Demo seed data is opt-in with `SEED_DEMO_DATA=true`. Detailed topology, service ownership, contracts and known discrepancies are in the [documentation index](../../docs/README.md).

@@ -18,7 +18,10 @@ public record UpdateIncidentStatusRequest(
     string? Reason = null);
 
 public record ResolveIncidentRequest(
-    string ResolutionNote);
+    string ResolutionNote,
+    string? VeterinarianName = null,
+    string? VeterinarianContact = null,
+    string? TransportDecision = null);
 
 public record IncidentFilterDto(
     Guid? TripId = null,
@@ -26,6 +29,9 @@ public record IncidentFilterDto(
     string? Type = null,
     string? Severity = null,
     string? Status = null,
+    string? Search = null,
+    string? SortBy = null,
+    string? SortDirection = null,
     DateTime? FromDate = null,
     DateTime? ToDate = null,
     int PageNumber = 1,
@@ -66,7 +72,10 @@ public record IncidentDto(
     DateTime CreatedAt,
     DateTime UpdatedAt,
     int VersionNo,
-    IReadOnlyList<IncidentAttachmentDto> Attachments);
+    IReadOnlyList<IncidentAttachmentDto> Attachments,
+    string? VeterinarianName,
+    string? VeterinarianContact,
+    string? TransportDecision);
 
 public record IncidentAttachmentDto(
     Guid Id,

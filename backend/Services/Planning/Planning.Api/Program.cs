@@ -5,12 +5,38 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Planning.Api;
+using Planning.Api.Grpc;
 using Planning.Application.Abstractions;
 using Planning.Application.Services;
 using Planning.Infrastructure.Persistence;
+using Contracts.Grpc.Compliance;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddGrpcClient<ComplianceQuery.ComplianceQueryClient>(options =>
+{
+    options.Address = new Uri(builder.Configuration["ComplianceGrpc:Address"] ?? "http://localhost:8081");
+});
+builder.Services.AddScoped<ITripComplianceEvaluator, PlanningComplianceGrpcClient>();
 builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new() { Title = "Racehorse Planning API", Version = "v1" });
+    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.ParameterLocation.Header,
+        Description = "Paste the accessToken from Identity /api/v1/auth/login."
+    });
+    options.AddSecurityRequirement(document => new Microsoft.OpenApi.OpenApiSecurityRequirement
+    {
+        [new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", document)] = []
+    });
+});
+builder.Services.AddGrpc();
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "racehorse-identity";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "racehorse-api";
@@ -40,7 +66,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("PlanningAccess", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningAccess", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningRead", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "COMPLIANCE_OFFICER", "ADMIN"));
+    options.AddPolicy("PlanningAssignedTrips", policy => policy.RequireRole("DRIVER", "ESCORT", "DRIVER_ESCORT"));
+    options.AddPolicy("PlanningLocationRead", policy => policy.RequireRole("CUSTOMER", "TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "COMPLIANCE_OFFICER", "DRIVER", "ESCORT", "DRIVER_ESCORT", "ADMIN"));
+    options.AddPolicy("PlanningApproval", policy => policy.RequireRole("LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningLogistics", policy => policy.RequireRole("TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("PlanningDataAdmin", policy => policy.RequireRole("ADMIN"));
+    options.AddPolicy("FlightBookingManage", policy => policy.RequireRole("ADMIN", "LOGISTICS_MANAGER", "FLEET_ROUTE_COORDINATOR"));
+    options.AddPolicy("CountrySupportAdmin", policy => policy.RequireRole("LOGISTICS_MANAGER", "ADMIN"));
 });
 
 var planningConnection = builder.Configuration.GetConnectionString("PlanningDb");
@@ -73,13 +107,23 @@ app.UseAuthorization();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI(options => options.SwaggerEndpoint("/swagger/v1/swagger.json", "Racehorse Planning API v1"));
 }
 
 var api = app.MapGroup("/api/v1");
 api.MapGroup("").RequireAuthorization("PlanningAccess").MapPlanningMasterData();
+api.MapGroup("").RequireAuthorization("PlanningLocationRead").MapCustomerCountryLookup();
+api.MapGroup("").RequireAuthorization("PlanningLocationRead").MapRouteCapabilityEndpoints(builder.Configuration);
+api.MapGroup("").RequireAuthorization("PlanningRead").MapPlanningReadEndpoints();
 api.MapGroup("").RequireAuthorization("PlanningAccess").MapPlanningCommands();
+api.MapStaffRouteCountryEndpoints();
+api.MapStaffOperatingAreaEndpoints();
+api.MapGroup("").RequireAuthorization("PlanningAssignedTrips").MapAssignedTripEndpoints();
+api.MapGroup("").RequireAuthorization("PlanningLocationRead").MapBookingLocationRead();
 
 app.MapServiceHealth("planning");
+app.MapGrpcService<PlanningQueryGrpcService>();
 
 // Auto initialize and verify database schema
 await DatabaseInitializer.InitializeDatabaseAsync(app.Services, app.Logger);

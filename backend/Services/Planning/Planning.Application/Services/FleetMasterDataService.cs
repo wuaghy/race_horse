@@ -9,6 +9,28 @@ namespace Planning.Application.Services;
 
 public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataService
 {
+    public async Task<NearestReceivingLocationDto?> FindNearestReceivingLocationAsync(decimal latitude, decimal longitude, CancellationToken ct = default)
+    {
+        if (latitude is < -90 or > 90 || longitude is < -180 or > 180)
+            throw new BusinessRuleException("Coordinates are outside valid latitude/longitude ranges.", "COORDINATES_INVALID");
+
+        var locations = await db.Locations.AsNoTracking()
+            .Where(x => x.Active && x.Latitude != null && x.Longitude != null &&
+                (x.LocationType == PlanningConstants.LocationType.Stable || x.LocationType == PlanningConstants.LocationType.QuarantineStation || x.LocationType == PlanningConstants.LocationType.HandoverPoint))
+            .ToListAsync(ct);
+        return locations.Select(x =>
+        {
+            var lat1 = (double)latitude * Math.PI / 180;
+            var lat2 = (double)x.Latitude!.Value * Math.PI / 180;
+            var dLat = lat2 - lat1;
+            var dLon = ((double)x.Longitude!.Value - (double)longitude) * Math.PI / 180;
+            var a = Math.Pow(Math.Sin(dLat / 2), 2) + Math.Cos(lat1) * Math.Cos(lat2) * Math.Pow(Math.Sin(dLon / 2), 2);
+            var km = 6371.0088 * 2 * Math.Asin(Math.Sqrt(a));
+            var dto = new LocationDto(x.Id, x.LocationCode, x.Name, x.LocationType, x.Address, x.City, x.CountryId, x.Latitude, x.Longitude, x.Active);
+            return new NearestReceivingLocationDto(dto, (decimal)km);
+        }).OrderBy(x => x.DistanceKm).FirstOrDefault();
+    }
+
     // ==========================================
     // Countries
     // ==========================================
@@ -126,13 +148,16 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
         if (!await db.Countries.AnyAsync(c => c.Id == input.CountryId, ct))
             throw new NotFoundException("Country", input.CountryId);
 
-        if (!string.IsNullOrWhiteSpace(input.LocationCode) &&
-            await db.Locations.AnyAsync(l => l.LocationCode != null && l.LocationCode.ToLower() == input.LocationCode.Trim().ToLower(), ct))
-            throw new BusinessRuleException($"Location with code '{input.LocationCode}' already exists.", "DUPLICATE_LOCATION_CODE", "locationCode");
+        var locationCode = string.IsNullOrWhiteSpace(input.LocationCode)
+            ? $"LOC-{Guid.NewGuid():N}".ToUpperInvariant()
+            : input.LocationCode.Trim().ToUpperInvariant();
+
+        if (await db.Locations.AnyAsync(l => l.LocationCode != null && l.LocationCode.ToLower() == locationCode.ToLower(), ct))
+            throw new BusinessRuleException($"Location with code '{locationCode}' already exists.", "DUPLICATE_LOCATION_CODE", "locationCode");
 
         var entity = new Location
         {
-            LocationCode = input.LocationCode?.Trim(),
+            LocationCode = locationCode,
             Name = input.Name.Trim(),
             LocationType = input.LocationType.Trim().ToUpperInvariant(),
             Address = input.Address?.Trim(),
@@ -229,15 +254,19 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
         if (input.HorseCapacity <= 0 || input.StallCapacity <= 0)
             throw new BusinessRuleException("Horse and stall capacity must be greater than zero.", "INVALID_CAPACITY", "horseCapacity");
 
-        if (await db.Vehicles.AnyAsync(v => v.VehicleCode.ToLower() == input.VehicleCode.Trim().ToLower(), ct))
-            throw new BusinessRuleException($"Vehicle code '{input.VehicleCode}' already exists.", "DUPLICATE_VEHICLE_CODE", "vehicleCode");
+        var vehicleCode = string.IsNullOrWhiteSpace(input.VehicleCode)
+            ? $"VEH-{Guid.NewGuid():N}".ToUpperInvariant()
+            : input.VehicleCode.Trim().ToUpperInvariant();
+
+        if (await db.Vehicles.AnyAsync(v => v.VehicleCode.ToLower() == vehicleCode.ToLower(), ct))
+            throw new BusinessRuleException($"Vehicle code '{vehicleCode}' already exists.", "DUPLICATE_VEHICLE_CODE", "vehicleCode");
 
         if (await db.Vehicles.AnyAsync(v => v.PlateNumber.ToLower() == input.PlateNumber.Trim().ToLower(), ct))
             throw new BusinessRuleException($"Plate number '{input.PlateNumber}' already exists.", "DUPLICATE_PLATE_NUMBER", "plateNumber");
 
         var entity = new Vehicle
         {
-            VehicleCode = input.VehicleCode.Trim().ToUpperInvariant(),
+            VehicleCode = vehicleCode,
             PlateNumber = input.PlateNumber.Trim().ToUpperInvariant(),
             VehicleType = input.VehicleType.Trim().ToUpperInvariant(),
             HorseCapacity = input.HorseCapacity,
@@ -333,12 +362,16 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
         if (input.Capacity <= 0)
             throw new BusinessRuleException("Stall capacity must be greater than zero.", "INVALID_CAPACITY", "capacity");
 
-        if (await db.Stalls.AnyAsync(s => s.StallCode.ToLower() == input.StallCode.Trim().ToLower(), ct))
-            throw new BusinessRuleException($"Stall code '{input.StallCode}' already exists.", "DUPLICATE_STALL_CODE", "stallCode");
+        var stallCode = string.IsNullOrWhiteSpace(input.StallCode)
+            ? $"STALL-{Guid.NewGuid():N}".ToUpperInvariant()
+            : input.StallCode.Trim().ToUpperInvariant();
+
+        if (await db.Stalls.AnyAsync(s => s.StallCode.ToLower() == stallCode.ToLower(), ct))
+            throw new BusinessRuleException($"Stall code '{stallCode}' already exists.", "DUPLICATE_STALL_CODE", "stallCode");
 
         var entity = new Stall
         {
-            StallCode = input.StallCode.Trim().ToUpperInvariant(),
+            StallCode = stallCode,
             StallType = input.StallType?.Trim(),
             Capacity = input.Capacity,
             Active = input.Active,
@@ -483,7 +516,7 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
             .OrderByDescending(x => x.ScheduledDepartureAt)
             .Skip(page * size)
             .Take(size)
-            .Select(x => new FlightBookingDto(x.Id, x.BookingReference, x.AirlineId, x.FlightNumber, x.OriginAirportId, x.DestinationAirportId, x.ScheduledDepartureAt, x.ScheduledArrivalAt, x.ActualDepartureAt, x.ActualArrivalAt))
+            .Select(x => new FlightBookingDto(x.Id, x.BookingReference, x.AirlineId, x.FlightNumber, x.OriginAirportId, x.DestinationAirportId, x.ScheduledDepartureAt, x.ScheduledArrivalAt, x.ActualDepartureAt, x.ActualArrivalAt, x.ConfirmationStatus, x.ConfirmedAt, x.ConfirmedByUserId))
             .ToListAsync(ct);
 
         return new PagedResult<FlightBookingDto>(items, page, size, total);
@@ -493,7 +526,7 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
     {
         var x = await db.FlightBookings.AsNoTracking().FirstOrDefaultAsync(f => f.Id == id, ct)
             ?? throw new NotFoundException("FlightBooking", id);
-        return new FlightBookingDto(x.Id, x.BookingReference, x.AirlineId, x.FlightNumber, x.OriginAirportId, x.DestinationAirportId, x.ScheduledDepartureAt, x.ScheduledArrivalAt, x.ActualDepartureAt, x.ActualArrivalAt);
+        return new FlightBookingDto(x.Id, x.BookingReference, x.AirlineId, x.FlightNumber, x.OriginAirportId, x.DestinationAirportId, x.ScheduledDepartureAt, x.ScheduledArrivalAt, x.ActualDepartureAt, x.ActualArrivalAt, x.ConfirmationStatus, x.ConfirmedAt, x.ConfirmedByUserId);
     }
 
     public async Task<FlightBookingDto> CreateFlightBookingAsync(FlightInput input, CancellationToken ct = default)
@@ -514,13 +547,16 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
         db.FlightBookings.Add(entity);
         await db.SaveChangesAsync(ct);
 
-        return new FlightBookingDto(entity.Id, entity.BookingReference, entity.AirlineId, entity.FlightNumber, entity.OriginAirportId, entity.DestinationAirportId, entity.ScheduledDepartureAt, entity.ScheduledArrivalAt, entity.ActualDepartureAt, entity.ActualArrivalAt);
+        return new FlightBookingDto(entity.Id, entity.BookingReference, entity.AirlineId, entity.FlightNumber, entity.OriginAirportId, entity.DestinationAirportId, entity.ScheduledDepartureAt, entity.ScheduledArrivalAt, entity.ActualDepartureAt, entity.ActualArrivalAt, entity.ConfirmationStatus, entity.ConfirmedAt, entity.ConfirmedByUserId);
     }
 
     public async Task<FlightBookingDto> UpdateFlightBookingAsync(Guid id, FlightInput input, CancellationToken ct = default)
     {
         var entity = await db.FlightBookings.FirstOrDefaultAsync(f => f.Id == id, ct)
             ?? throw new NotFoundException("FlightBooking", id);
+
+        if (entity.ConfirmationStatus != "PENDING")
+            throw new BusinessRuleException("Only pending flight bookings can be edited. Cancel a confirmed booking and create a corrected record.", "FLIGHT_BOOKING_NOT_EDITABLE");
 
         await ValidateFlightBookingInputAsync(input, id, ct);
 
@@ -533,7 +569,27 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
         entity.ScheduledArrivalAt = input.ScheduledArrivalAt;
 
         await db.SaveChangesAsync(ct);
-        return new FlightBookingDto(entity.Id, entity.BookingReference, entity.AirlineId, entity.FlightNumber, entity.OriginAirportId, entity.DestinationAirportId, entity.ScheduledDepartureAt, entity.ScheduledArrivalAt, entity.ActualDepartureAt, entity.ActualArrivalAt);
+        return new FlightBookingDto(entity.Id, entity.BookingReference, entity.AirlineId, entity.FlightNumber, entity.OriginAirportId, entity.DestinationAirportId, entity.ScheduledDepartureAt, entity.ScheduledArrivalAt, entity.ActualDepartureAt, entity.ActualArrivalAt, entity.ConfirmationStatus, entity.ConfirmedAt, entity.ConfirmedByUserId);
+    }
+
+    public async Task<FlightBookingDto> SetFlightBookingConfirmationAsync(Guid id, Guid actorUserId, string status, CancellationToken ct = default)
+    {
+        await using var tx = await db.BeginTransactionAsync(ct);
+        var entity = await db.FlightBookings.FirstOrDefaultAsync(f => f.Id == id, ct)
+            ?? throw new NotFoundException("FlightBooking", id);
+        var normalized = status.Trim().ToUpperInvariant();
+        if (normalized is not ("CONFIRMED" or "CANCELLED"))
+            throw new BusinessRuleException("Flight booking status must be CONFIRMED or CANCELLED.", "FLIGHT_BOOKING_STATUS_INVALID", "status");
+        if (entity.ConfirmationStatus == "CANCELLED" && normalized != "CANCELLED")
+            throw new BusinessRuleException("A cancelled flight booking cannot be reactivated.", "FLIGHT_BOOKING_CANCELLED");
+        if (normalized == "CANCELLED" && await db.TripLegAssignments.AnyAsync(a => a.FlightBookingId == id, ct))
+            throw new BusinessRuleException("Remove the flight booking from assigned trip legs before cancelling it.", "FLIGHT_BOOKING_IN_USE");
+        entity.ConfirmationStatus = normalized;
+        entity.ConfirmedAt = normalized == "CONFIRMED" ? entity.ConfirmedAt ?? DateTime.UtcNow : null;
+        entity.ConfirmedByUserId = normalized == "CONFIRMED" ? entity.ConfirmedByUserId ?? actorUserId : null;
+        await db.SaveChangesAsync(ct);
+        if (tx is not null) await tx.CommitAsync(ct);
+        return new FlightBookingDto(entity.Id, entity.BookingReference, entity.AirlineId, entity.FlightNumber, entity.OriginAirportId, entity.DestinationAirportId, entity.ScheduledDepartureAt, entity.ScheduledArrivalAt, entity.ActualDepartureAt, entity.ActualArrivalAt, entity.ConfirmationStatus, entity.ConfirmedAt, entity.ConfirmedByUserId);
     }
 
     public async Task DeleteFlightBookingAsync(Guid id, CancellationToken ct = default)
@@ -556,7 +612,7 @@ public class FleetMasterDataService(IPlanningDbContext db) : IFleetMasterDataSer
         if (input.OriginAirportId == input.DestinationAirportId)
             throw new BusinessRuleException("Origin and destination airports must be distinct locations.", "SAME_AIRPORT", "destinationAirportId");
 
-        if (!await db.Airlines.AnyAsync(a => a.Id == input.AirlineId, ct))
+        if (!await db.Airlines.AnyAsync(a => a.Id == input.AirlineId && a.Active, ct))
             throw new NotFoundException("Airline", input.AirlineId);
 
         var origin = await db.Locations.FirstOrDefaultAsync(l => l.Id == input.OriginAirportId, ct)

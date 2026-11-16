@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+option csharp_namespace = "Contracts.Grpc.Planning";
+package racehorse.planning.v1;
+
+service PlanningQuery {
+  rpc GetTripSummary (GetTripSummaryRequest) returns (TripSummaryReply);
+  rpc GetCustomerTripIds (GetCustomerTripIdsRequest) returns (GetCustomerTripIdsReply);
+  rpc ValidateTripDeparture (ValidateTripDepartureRequest) returns (ValidateTripDepartureReply);
+  rpc GetOrderTripStatus (GetOrderTripStatusRequest) returns (OrderTripStatusReply);
+  rpc SetOrderCancellationPending (SetOrderCancellationPendingRequest) returns (SetOrderCancellationPendingReply);
+  rpc GetRouteTransportModes (GetRouteTransportModesRequest) returns (RouteTransportModesReply);
+}
+
+message GetOrderTripStatusRequest {
+  string order_id = 1;
+}
+
+message OrderTripStatusReply {
+  bool trip_exists = 1;
+  string trip_id = 2;
+  string status = 3;
+}
+
+message SetOrderCancellationPendingRequest {
+  string order_id = 1;
+  bool pending = 2;
+}
+
+message SetOrderCancellationPendingReply {
+  bool trip_exists = 1;
+  bool can_cancel = 2;
+  string trip_id = 3;
+  string status = 4;
+}
+
+message GetRouteTransportModesRequest {
+  string origin_location_id = 1;
+  string destination_location_id = 2;
+}
+
+message RouteTransportModesReply {
+  bool configured = 1;
+  repeated string allowed_modes = 2;
+  string origin_country_id = 3;
+  string destination_country_id = 4;
+  repeated RouteModeDurationEstimate estimated_durations = 5;
+}
+
+message RouteModeDurationEstimate {
+  string mode = 1;
+  int32 min_duration_minutes = 2;
+  int32 max_duration_minutes = 3;
+  int32 min_express_duration_minutes = 4;
+  int32 max_express_duration_minutes = 5;
+}
+
+message GetTripSummaryRequest {
+  string trip_id = 1;
+}
+
+message TripSummaryReply {
+  string trip_id = 1;
+  string trip_no = 2;
+  string order_id = 3;
+  string status = 4;
+  bool compliance_ready = 5;
+  string planned_departure_at = 6;
+  string planned_arrival_at = 7;
+  int32 delay_minutes = 8;
+  int32 version_no = 9;
+  string customer_user_id = 10;
+  repeated string horse_ids = 11;
+  repeated TripOwner customer_owners = 12;
+}
+
+message TripOwner {
+  string customer_user_id = 1;
+  repeated string horse_ids = 2;
+}
+
+message GetCustomerTripIdsRequest {
+  string identity_user_id = 1;
+}
+
+message GetCustomerTripIdsReply {
+  repeated string trip_ids = 1;
+}
+
+message ValidateTripDepartureRequest {
+  string trip_id = 1;
+}
+
+message ValidateTripDepartureReply {
+  bool allowed = 1;
+  string trip_id = 2;
+  string status = 3;
+  bool compliance_ready = 4;
+  repeated string blockers = 5;
+}

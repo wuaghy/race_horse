@@ -7,7 +7,8 @@ public interface ITripExecutionService
 {
     Task<TripExecutionDto> InitiateTripExecutionAsync(InitiateTripExecutionInput input, CancellationToken cancellationToken);
     Task<TripExecutionDto?> GetTripExecutionAsync(Guid tripId, CancellationToken cancellationToken);
-    Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, CancellationToken cancellationToken);
+    Task<PagedTrackingResult<TripExecutionDto>> GetTripExecutionsAsync(int page, int pageSize, string? search, string? status, string? sortDirection, CancellationToken cancellationToken, IReadOnlyCollection<Guid>? allowedTripIds = null);
+    Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, Guid actorUserId, CancellationToken cancellationToken);
     Task<TripExecutionDto> RecordTripArrivalAsync(Guid tripId, decimal latitude, decimal longitude, CancellationToken cancellationToken);
     Task<TripExecutionDto> UpdateTripLocationAsync(Guid tripId, UpdateTripLocationInput input, CancellationToken cancellationToken);
     Task<CheckpointEventDto> RecordCheckpointEventAsync(Guid tripId, RecordCheckpointEventInput input, CancellationToken cancellationToken);
@@ -52,7 +53,13 @@ public class TripExecutionService : ITripExecutionService
         return trip == null ? null : MapToDto(trip);
     }
 
-    public async Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, CancellationToken cancellationToken)
+    public async Task<PagedTrackingResult<TripExecutionDto>> GetTripExecutionsAsync(int page, int pageSize, string? search, string? status, string? sortDirection, CancellationToken cancellationToken, IReadOnlyCollection<Guid>? allowedTripIds = null)
+    {
+        var result = await _tripRepository.ListAsync(page, pageSize, search, status, sortDirection, cancellationToken, allowedTripIds);
+        return new PagedTrackingResult<TripExecutionDto>(result.Items.Select(MapToDto).ToList(), result.Page, result.PageSize, result.TotalItems);
+    }
+
+    public async Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, Guid actorUserId, CancellationToken cancellationToken)
     {
         var trip = await _tripRepository.GetByTripIdAsync(tripId, cancellationToken)
             ?? throw new InvalidOperationException($"Trip {tripId} not found");
@@ -64,6 +71,17 @@ public class TripExecutionService : ITripExecutionService
         trip.LastLocationUpdateAt = DateTime.UtcNow;
         trip.UpdatedAt = DateTime.UtcNow;
         trip.VersionNo++;
+
+        var departureEvent = await AddMovementCheckpointAsync(
+            trip,
+            TrackingConstants.CheckpointType.Departure,
+            TrackingConstants.CheckpointStatus.Departed,
+            trip.DepartureAt.Value,
+            latitude,
+            longitude,
+            "Trip departure recorded.",
+            cancellationToken);
+        trip.CurrentCheckpointId = departureEvent.Id;
 
         await _tripRepository.UpdateAsync(trip, cancellationToken);
 
@@ -77,10 +95,11 @@ public class TripExecutionService : ITripExecutionService
             {
                 TripId = trip.TripId,
                 TripNo = trip.TripNo,
+                DepartedByUserId = actorUserId,
                 DepartedAt = trip.DepartureAt,
                 Latitude = latitude,
                 Longitude = longitude
-            }),
+            }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             CorrelationId = Guid.NewGuid(),
             OccurredAt = DateTime.UtcNow,
             Status = "PENDING"
@@ -104,6 +123,17 @@ public class TripExecutionService : ITripExecutionService
         trip.UpdatedAt = DateTime.UtcNow;
         trip.VersionNo++;
 
+        var arrivalEvent = await AddMovementCheckpointAsync(
+            trip,
+            TrackingConstants.CheckpointType.Destination,
+            TrackingConstants.CheckpointStatus.Arrived,
+            trip.ArrivalAt.Value,
+            latitude,
+            longitude,
+            "Trip arrival recorded.",
+            cancellationToken);
+        trip.CurrentCheckpointId = arrivalEvent.Id;
+
         await _tripRepository.UpdateAsync(trip, cancellationToken);
 
         // Publish integration event
@@ -119,7 +149,7 @@ public class TripExecutionService : ITripExecutionService
                 ArrivedAt = trip.ArrivalAt,
                 Latitude = latitude,
                 Longitude = longitude
-            }),
+            }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             CorrelationId = Guid.NewGuid(),
             OccurredAt = DateTime.UtcNow,
             Status = "PENDING"
@@ -201,7 +231,7 @@ public class TripExecutionService : ITripExecutionService
                 Latitude = input.Latitude,
                 Longitude = input.Longitude,
                 Notes = input.Notes
-            }),
+            }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             CorrelationId = Guid.NewGuid(),
             OccurredAt = DateTime.UtcNow,
             Status = "PENDING"
@@ -212,10 +242,51 @@ public class TripExecutionService : ITripExecutionService
         return MapToDto(checkpointEvent);
     }
 
+    private async Task<CheckpointEvent> AddMovementCheckpointAsync(
+        TripExecution trip,
+        string checkpointType,
+        string status,
+        DateTime occurredAt,
+        decimal latitude,
+        decimal longitude,
+        string notes,
+        CancellationToken cancellationToken)
+    {
+        var existing = await _checkpointRepository.GetByTripExecutionIdAsync(trip.Id, cancellationToken);
+        var checkpointEvent = new CheckpointEvent
+        {
+            TripExecutionId = trip.Id,
+            LocationId = null,
+            SequenceNo = existing.Count + 1,
+            CheckpointType = checkpointType,
+            Status = status,
+            ArrivalLatitude = latitude,
+            ArrivalLongitude = longitude,
+            Notes = notes,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        if (status == TrackingConstants.CheckpointStatus.Arrived)
+        {
+            checkpointEvent.ActualArrivalAt = occurredAt;
+        }
+        else if (status == TrackingConstants.CheckpointStatus.Departed)
+        {
+            checkpointEvent.ActualDepartureAt = occurredAt;
+        }
+
+        await _checkpointRepository.AddAsync(checkpointEvent, cancellationToken);
+        return checkpointEvent;
+    }
+
     public async Task<IReadOnlyList<CheckpointEventDto>> GetCheckpointEventsAsync(Guid tripId, CancellationToken cancellationToken)
     {
-        var trip = await _tripRepository.GetByTripIdAsync(tripId, cancellationToken)
-            ?? throw new InvalidOperationException($"Trip {tripId} not found");
+        var trip = await _tripRepository.GetByTripIdAsync(tripId, cancellationToken);
+        if (trip is null)
+        {
+            return Array.Empty<CheckpointEventDto>();
+        }
 
         var events = await _checkpointRepository.GetByTripExecutionIdAsync(trip.Id, cancellationToken);
         return events.Select(MapToDto).ToList().AsReadOnly();
@@ -271,6 +342,7 @@ public interface ITripExecutionRepository
     Task AddAsync(TripExecution trip, CancellationToken cancellationToken);
     Task UpdateAsync(TripExecution trip, CancellationToken cancellationToken);
     Task<TripExecution?> GetByTripIdAsync(Guid tripId, CancellationToken cancellationToken);
+    Task<PagedTrackingResult<TripExecution>> ListAsync(int page, int pageSize, string? search, string? status, string? sortDirection, CancellationToken cancellationToken, IReadOnlyCollection<Guid>? allowedTripIds = null);
 }
 
 public interface ICheckpointEventRepository

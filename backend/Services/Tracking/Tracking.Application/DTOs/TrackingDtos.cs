@@ -16,6 +16,11 @@ public record TripExecutionDto(
     int VersionNo
 );
 
+public record PagedTrackingResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, long TotalItems)
+{
+    public int TotalPages => PageSize == 0 ? 0 : (int)Math.Ceiling(TotalItems / (double)PageSize);
+}
+
 public record InitiateTripExecutionInput(
     Guid TripId,
     string TripNo
@@ -24,7 +29,7 @@ public record InitiateTripExecutionInput(
 public record CheckpointEventDto(
     Guid Id,
     Guid TripExecutionId,
-    Guid LocationId,
+    Guid? LocationId,
     int SequenceNo,
     string CheckpointType,
     string Status,

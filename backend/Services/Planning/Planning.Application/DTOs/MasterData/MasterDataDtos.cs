@@ -26,6 +26,7 @@ public record LocationInput(
     decimal? Longitude,
     bool Active
 );
+public record NearestReceivingLocationDto(LocationDto Location, decimal DistanceKm);
 
 public record VehicleDto(
     Guid Id,
@@ -79,7 +80,10 @@ public record FlightBookingDto(
     DateTime ScheduledDepartureAt,
     DateTime ScheduledArrivalAt,
     DateTime? ActualDepartureAt,
-    DateTime? ActualArrivalAt
+    DateTime? ActualArrivalAt,
+    string ConfirmationStatus = "PENDING",
+    DateTime? ConfirmedAt = null,
+    Guid? ConfirmedByUserId = null
 );
 public record FlightInput(
     string BookingReference,

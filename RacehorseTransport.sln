@@ -107,6 +107,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Incident.Tests", "backend\S
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Notification.Tests", "backend\Services\Notification\Notification.Tests\Notification.Tests.csproj", "{996832FD-F924-4506-A6F3-6BB7E4F3DB53}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Handover.Tests", "backend\Services\Handover\Handover.Tests\Handover.Tests.csproj", "{C13D1F47-5B80-4E36-94D6-9D4D590A99E1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Planning.Tests", "backend\Services\Planning\Planning.Tests\Planning.Tests.csproj", "{E2C5DE10-9E7E-46A4-968A-5743767CD213}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -569,6 +573,14 @@ Global
 		{996832FD-F924-4506-A6F3-6BB7E4F3DB53}.Debug|x86.Build.0 = Debug|Any CPU
 		{996832FD-F924-4506-A6F3-6BB7E4F3DB53}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{996832FD-F924-4506-A6F3-6BB7E4F3DB53}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C13D1F47-5B80-4E36-94D6-9D4D590A99E1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C13D1F47-5B80-4E36-94D6-9D4D590A99E1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C13D1F47-5B80-4E36-94D6-9D4D590A99E1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C13D1F47-5B80-4E36-94D6-9D4D590A99E1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E2C5DE10-9E7E-46A4-968A-5743767CD213}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2C5DE10-9E7E-46A4-968A-5743767CD213}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2C5DE10-9E7E-46A4-968A-5743767CD213}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2C5DE10-9E7E-46A4-968A-5743767CD213}.Release|Any CPU.Build.0 = Release|Any CPU
 		{996832FD-F924-4506-A6F3-6BB7E4F3DB53}.Release|x64.ActiveCfg = Release|Any CPU
 		{996832FD-F924-4506-A6F3-6BB7E4F3DB53}.Release|x64.Build.0 = Release|Any CPU
 		{996832FD-F924-4506-A6F3-6BB7E4F3DB53}.Release|x86.ActiveCfg = Release|Any CPU

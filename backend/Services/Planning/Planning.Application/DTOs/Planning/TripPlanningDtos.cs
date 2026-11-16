@@ -1,19 +1,59 @@
 namespace Planning.Application.DTOs.Planning;
 
-public record CreateTripInput(Guid OrderId);
+public record CreateTripInput(
+    Guid OrderId,
+    Guid? RequestId = null,
+    Guid? OriginLocationId = null,
+    Guid? DestinationLocationId = null,
+    DateTime? RequestedDepartureAt = null,
+    DateTime? RequestedArrivalAt = null,
+    string? PreferredTransportMode = null,
+    decimal? CustomPickupLatitude = null,
+    decimal? CustomPickupLongitude = null,
+    string? CustomPickupLabel = null,
+    Guid? CustomerId = null,
+    IReadOnlyList<Guid>? HorseIds = null,
+    string? ReceiverName = null,
+    string? ReceiverPhone = null,
+    string? ReceiverEmail = null,
+    string? OrderNo = null,
+    string? RequestNo = null,
+    string? CustomerName = null,
+      IReadOnlyDictionary<Guid, string>? HorseNames = null,
+      string PaymentStatus = "PAID",
+      Guid? CustomerUserId = null);
 
 public record TripDto(
     Guid Id,
     string TripNo,
-    Guid OrderId,
+    Guid? OrderId,
     string Status,
     DateTime? PlannedDepartureAt,
     DateTime? PlannedArrivalAt,
     bool ComplianceReady,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    int VersionNo
+    int VersionNo,
+    decimal? CustomPickupLatitude = null,
+    decimal? CustomPickupLongitude = null,
+    string? CustomPickupLabel = null,
+    Guid? OriginLocationId = null,
+    Guid? DestinationLocationId = null,
+    int OrderCount = 1,
+    Guid? MergedIntoTripId = null,
+    IReadOnlyList<string>? CustomerNames = null,
+    IReadOnlyList<string>? HorseNames = null
 );
+
+public record TripOrderDto(Guid OrderId, Guid? RequestId, Guid? CustomerId, Guid? OriginLocationId, Guid? DestinationLocationId,
+    DateTime? RequestedDepartureAt, DateTime? RequestedArrivalAt, string? PreferredTransportMode, IReadOnlyList<Guid> HorseIds,
+    string? ReceiverName, string? ReceiverPhone, string? ReceiverEmail, DateTime? CompletedAt,
+    decimal? CustomPickupLatitude = null, decimal? CustomPickupLongitude = null, string? CustomPickupLabel = null,
+    string? OrderNo = null, string? RequestNo = null, string? CustomerName = null,
+    IReadOnlyDictionary<Guid, string>? HorseNames = null, string PaymentStatus = "PAID");
+public record DispatchTripDto(TripDto Trip, IReadOnlyList<TripOrderDto> Orders);
+public record DispatchCalendarDayDto(DateOnly Date, int OrderCount, int TripCount, int UnassignedOrderCount);
+public record CreateDispatchTripInput(IReadOnlyList<Guid> OrderIds);
 
 public record RoutePlanDto(
     Guid Id,
@@ -45,6 +85,14 @@ public record RoutePlanVersionDto(
 
 public record CreateRoutePlanVersionInput(string? Reason = null);
 
+public record CreateRouteChangeRequestInput(
+    string Reason,
+    int DelayEstimateMinutes,
+    decimal AdditionalCost,
+    string CurrencyCode);
+
+public record RejectRouteChangeInput(string Reason);
+
 public record RouteLegDto(
     Guid Id,
     Guid RoutePlanVersionId,
@@ -55,8 +103,14 @@ public record RouteLegDto(
     DateTime? PlannedDepartureAt,
     DateTime? PlannedArrivalAt,
     decimal? DistanceKm,
-    string Status
+    string Status,
+    IReadOnlyList<RouteShapePoint>? RouteShape = null
 );
+
+public record RouteShapePoint(double Latitude, double Longitude);
+public record RouteShapeInput(IReadOnlyList<RouteShapePoint> Points);
+public record RouteTemplateInput(string Name, Guid OriginLocationId, Guid DestinationLocationId, string TransportMode, IReadOnlyList<RouteShapePoint> Points, decimal? CustomPickupLatitude = null, decimal? CustomPickupLongitude = null);
+public record RouteTemplateDto(Guid Id, string Name, Guid OriginLocationId, Guid DestinationLocationId, string TransportMode, IReadOnlyList<RouteShapePoint> Points, DateTime CreatedAt, decimal? CustomPickupLatitude, decimal? CustomPickupLongitude);
 
 public record RouteLegInput(
     int SequenceNo,
@@ -83,8 +137,8 @@ public record CheckpointInput(
     int SequenceNo,
     Guid LocationId,
     string Type,
-    DateTime ArrivalAt,
-    DateTime DepartureAt
+    DateTime? ArrivalAt = null,
+    DateTime? DepartureAt = null
 );
 
 public record ResourceAssignmentDto(
@@ -115,8 +169,17 @@ public record StaffAssignmentDto(
 public record StaffInput(
     Guid LegId,
     Guid UserId,
-    string Role
+      string Role,
+      string? OutsideAreaOverrideReason = null
 );
+
+public record StaffRouteCountryDto(Guid CountryId, string CountryName, DateOnly? ValidUntil);
+public record StaffRouteCountriesInput(IReadOnlyList<Guid> CountryIds, DateOnly? ValidUntil = null);
+public record StaffOperatingAreaDto(Guid Id, Guid UserId, Guid LocationId, string LocationName, string City, string CountryName,
+    decimal Latitude, decimal Longitude, decimal RadiusKm, DateTime UpdatedAt);
+public record StaffOperatingAreaInput(Guid LocationId, decimal RadiusKm);
+public record ReplaceStaffOperatingAreasInput(IReadOnlyList<StaffOperatingAreaInput> Areas);
+public record NearestDriverDto(Guid UserId, double DistanceKm, string OperatingAreaName, DateTime AreaUpdatedAt);
 
 public record HorseAssignmentDto(
     Guid Id,

@@ -36,6 +36,9 @@ public class IncidentDbContext : DbContext, IIncidentDbContext
             entity.Property(e => e.Title).HasMaxLength(255).IsRequired();
             entity.Property(e => e.Description).HasMaxLength(4000).IsRequired();
             entity.Property(e => e.ResolutionNote).HasMaxLength(4000);
+            entity.Property(e => e.VeterinarianName).HasMaxLength(200);
+            entity.Property(e => e.VeterinarianContact).HasMaxLength(200);
+            entity.Property(e => e.TransportDecision).HasMaxLength(30);
 
             entity.Property(e => e.OccurredAt).HasPrecision(3);
             entity.Property(e => e.ResolvedAt).HasPrecision(3);

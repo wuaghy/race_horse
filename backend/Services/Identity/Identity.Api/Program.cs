@@ -1,9 +1,11 @@
 using BuildingBlocks.Api;
 using BuildingBlocks.Middleware;
 using Identity.Api.Authentication;
+using Identity.Api.Dashboard;
 using Identity.Application;
 using Identity.Infrastructure;
 using Identity.Infrastructure.Authentication;
+using Contracts.Grpc.CustomerProfile;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -30,6 +32,11 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 builder.Services.AddValidation();
+builder.Services.AddGrpcClient<CustomerProfileProvisioning.CustomerProfileProvisioningClient>(options =>
+{
+    options.Address = new Uri(builder.Configuration["BookingGrpc:Address"] ?? "http://localhost:8082");
+});
+builder.Services.AddScoped<Identity.Application.Authentication.ICustomerProfileProvisioner, BookingCustomerProfileProvisioner>();
 
 var jwtSettings = JwtSettings.FromConfiguration(builder.Configuration);
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SigningKey));
@@ -54,7 +61,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             RoleClaimType = "role"
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("LogisticsManager", policy => policy.RequireRole("LOGISTICS_MANAGER", "ADMIN"));
+    options.AddPolicy("StaffDirectory", policy => policy.RequireRole("LOGISTICS_MANAGER", "TRANSPORT_SPECIALIST", "FLEET_ROUTE_COORDINATOR", "ADMIN"));
+});
 
 var app = builder.Build();
 
@@ -87,5 +98,7 @@ app.MapGet("/health", (HttpContext context) =>
 .WithName("GetIdentityHealth");
 
 app.MapAuthEndpoints();
+app.MapStaffDirectoryEndpoints();
+app.MapIdentityDashboardEndpoints();
 
 app.Run();

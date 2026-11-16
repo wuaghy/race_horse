@@ -109,6 +109,7 @@ CREATE TABLE ClearanceCases (
     CaseNo              VARCHAR(50)      NOT NULL,
     TripId              UNIQUEIDENTIFIER NOT NULL,       -- logical ref -> PlanningDb.TransportTrips
     RouteLegId          UNIQUEIDENTIFIER NULL,           -- logical ref -> PlanningDb.RouteLegs
+    ClearanceType       VARCHAR(30)      NOT NULL DEFAULT 'CUSTOMS',
     CountryId           UNIQUEIDENTIFIER NOT NULL,       -- logical ref -> PlanningDb.Countries
     BorderPointId       UNIQUEIDENTIFIER NULL,           -- logical ref -> PlanningDb.Locations
     AuthorityName       NVARCHAR(255)    NOT NULL,
@@ -126,10 +127,12 @@ CREATE TABLE ClearanceCases (
     CONSTRAINT PK_ClearanceCases PRIMARY KEY CLUSTERED (Id),
     CONSTRAINT UQ_ClearanceCases_No UNIQUE (CaseNo),
     CONSTRAINT CK_ClearanceCases_Status CHECK (Status IN
-        ('DRAFT','SUBMITTED','UNDER_REVIEW','NEED_ADDITIONAL_INFO','APPROVED','REJECTED','COMPLETED'))
+        ('DRAFT','SUBMITTED','UNDER_REVIEW','NEED_ADDITIONAL_INFO','APPROVED','REJECTED','COMPLETED')),
+    CONSTRAINT CK_ClearanceCases_ClearanceType CHECK (ClearanceType IN ('CUSTOMS','QUARANTINE','INSPECTION'))
 );
 CREATE INDEX IX_ClearanceCases_TripId ON ClearanceCases (TripId);
 CREATE INDEX IX_ClearanceCases_Status ON ClearanceCases (Status);
+CREATE INDEX IX_ClearanceCases_RouteRequirement ON ClearanceCases (TripId, RouteLegId, CountryId, ClearanceType, Status);
 
 CREATE TABLE ClearanceCaseDocuments (
     Id                  UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),

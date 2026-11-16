@@ -139,6 +139,12 @@ public class IncidentService : IIncidentService
         if (!string.IsNullOrWhiteSpace(filter.Status))
             query = query.Where(i => i.Status == filter.Status);
 
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var search = filter.Search.Trim();
+            query = query.Where(i => i.IncidentNo.Contains(search) || i.Title.Contains(search) || i.Type.Contains(search));
+        }
+
         if (filter.FromDate.HasValue)
             query = query.Where(i => i.OccurredAt >= filter.FromDate.Value);
 
@@ -150,8 +156,15 @@ public class IncidentService : IIncidentService
         var pageNumber = Math.Max(1, filter.PageNumber);
         var pageSize = Math.Clamp(filter.PageSize, 1, 100);
 
-        var items = await query
-            .OrderByDescending(i => i.OccurredAt)
+        var descending = !string.Equals(filter.SortDirection, "asc", StringComparison.OrdinalIgnoreCase);
+        var ordered = (filter.SortBy ?? "occurred").ToLowerInvariant() switch
+        {
+            "incident" => descending ? query.OrderByDescending(i => i.IncidentNo) : query.OrderBy(i => i.IncidentNo),
+            "severity" => descending ? query.OrderByDescending(i => i.Severity) : query.OrderBy(i => i.Severity),
+            "status" => descending ? query.OrderByDescending(i => i.Status) : query.OrderBy(i => i.Status),
+            _ => descending ? query.OrderByDescending(i => i.OccurredAt) : query.OrderBy(i => i.OccurredAt)
+        };
+        var items = await ordered
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .Select(i => new IncidentSummaryDto(
@@ -213,6 +226,10 @@ public class IncidentService : IIncidentService
         if (incident == null)
             throw new KeyNotFoundException($"Incident with ID {id} was not found.");
 
+        if (request.NewStatus == "RESOLVED")
+            throw new InvalidOperationException("Use the resolve action to record the outcome before closing an incident.");
+        if (request.NewStatus == "CANCELLED" && incident.Type == "HORSE_MEDICAL" && incident.Severity is "HIGH" or "CRITICAL")
+            throw new InvalidOperationException("A serious horse medical incident must be resolved with an outcome.");
         ValidateStatusTransition(incident.Status, request.NewStatus);
 
         var oldStatus = incident.Status;
@@ -254,10 +271,21 @@ public class IncidentService : IIncidentService
         if (incident.Status is "RESOLVED" or "CLOSED" or "CANCELLED")
             throw new InvalidOperationException($"Cannot resolve incident {incident.IncidentNo} currently in status {incident.Status}.");
 
+        if (incident.Type == "HORSE_MEDICAL" && incident.Severity is "HIGH" or "CRITICAL")
+        {
+            if (string.IsNullOrWhiteSpace(request.VeterinarianName) || string.IsNullOrWhiteSpace(request.VeterinarianContact))
+                throw new InvalidOperationException("Record the consulted veterinarian's name and contact before resolving a serious horse medical incident.");
+            if (request.TransportDecision is not ("CONTINUE" or "TRANSFER" or "STOP"))
+                throw new InvalidOperationException("Record the transport decision before resolving a serious horse medical incident.");
+        }
+
         var oldStatus = incident.Status;
         incident.Status = "RESOLVED";
         incident.ResolvedAt = DateTime.UtcNow;
         incident.ResolutionNote = request.ResolutionNote;
+        incident.VeterinarianName = request.VeterinarianName?.Trim();
+        incident.VeterinarianContact = request.VeterinarianContact?.Trim();
+        incident.TransportDecision = request.TransportDecision;
         incident.UpdatedAt = DateTime.UtcNow;
         incident.VersionNo++;
 
@@ -409,5 +437,5 @@ public class IncidentService : IIncidentService
                 a.FileUrl,
                 a.MimeType,
                 a.UploadedByUserId,
-                a.UploadedAt)).ToList() ?? []);
+                a.UploadedAt)).ToList() ?? [], incident.VeterinarianName, incident.VeterinarianContact, incident.TransportDecision);
 }

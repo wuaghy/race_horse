@@ -5,7 +5,8 @@ namespace Identity.Application.Authentication;
 public sealed class IdentityAuthService(
     IIdentityStore store,
     IPasswordHashService passwordHashService,
-    IIdentityTokenService tokenService) : IIdentityAuthService
+    IIdentityTokenService tokenService,
+    ICustomerProfileProvisioner customerProfileProvisioner) : IIdentityAuthService
 {
     public async Task<AuthSessionResult> RegisterCustomerAsync(RegisterCustomerCommand command, CancellationToken cancellationToken)
     {
@@ -32,6 +33,23 @@ public sealed class IdentityAuthService(
         catch (DuplicateIdentityEmailException)
         {
             throw new AppException("An account with this email already exists.", 409, 40901);
+        }
+
+        try
+        {
+            await customerProfileProvisioner.ProvisionAsync(user.Id, email, fullName, command.Phone, cancellationToken);
+        }
+        catch (Exception)
+        {
+            try
+            {
+                await store.DeleteNewCustomerAsync(user.Id, CancellationToken.None);
+            }
+            catch
+            {
+                // Preserve the provisioning failure; account cleanup is best effort.
+            }
+            throw new AppException("Registration could not be completed because the customer profile could not be provisioned. Please retry.", 503, 50301);
         }
 
         return CreateSession(user, refreshToken, refreshExpiresAt);

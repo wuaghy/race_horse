@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -39,7 +40,8 @@ public class NotificationConsumerTests
         var consumer = new NotificationEventConsumer(
             scopeFactory,
             Options.Create(new RabbitMqOptions { Enabled = false }),
-            NullLogger<NotificationEventConsumer>.Instance);
+            NullLogger<NotificationEventConsumer>.Instance,
+            new ConfigurationBuilder().Build());
 
         var eventId = Guid.NewGuid();
         var eventPayload = JsonSerializer.Serialize(new
@@ -64,6 +66,8 @@ public class NotificationConsumerTests
         var inboxCountAfterFirst = await db.InboxMessages.CountAsync();
         Assert.Equal(1, notifCountAfterFirst);
         Assert.Equal(1, inboxCountAfterFirst);
+        Assert.Equal(Guid.Parse("22222222-2222-4222-8222-222222222222"),
+            (await db.Notifications.SingleAsync()).RecipientUserId);
 
         // Act 2: Duplicate delivery of same eventId (at-least-once simulation)
         var result2 = await consumer.ProcessEventAsync(eventPayload);
@@ -89,7 +93,8 @@ public class NotificationConsumerTests
         var consumer = new NotificationEventConsumer(
             scopeFactory,
             Options.Create(new RabbitMqOptions { Enabled = false }),
-            NullLogger<NotificationEventConsumer>.Instance);
+            NullLogger<NotificationEventConsumer>.Instance,
+            new ConfigurationBuilder().Build());
 
         var incidentId = Guid.NewGuid();
         var eventPayload = JsonSerializer.Serialize(new

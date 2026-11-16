@@ -7,6 +7,11 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new() { Title = "Racehorse API Gateway", Version = "v1" });
+});
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "racehorse-identity";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "racehorse-api";
 var jwtSigningKey = builder.Configuration["Jwt:SigningKey"];
@@ -45,6 +50,21 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.RoutePrefix = "swagger";
+        options.DocumentTitle = "Racehorse Transport API Documentation";
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Gateway");
+        options.SwaggerEndpoint("/swagger/services/identity/v1/swagger.json", "Identity Service");
+        options.SwaggerEndpoint("/swagger/services/booking/v1/swagger.json", "Booking Service");
+        options.SwaggerEndpoint("/swagger/services/compliance/v1/swagger.json", "Compliance Service");
+        options.SwaggerEndpoint("/swagger/services/planning/v1/swagger.json", "Planning Service");
+        options.SwaggerEndpoint("/swagger/services/tracking/v1/swagger.json", "Tracking Service");
+        options.SwaggerEndpoint("/swagger/services/handover/v1/swagger.json", "Handover Service");
+        options.SwaggerEndpoint("/swagger/services/incident/v1/swagger.json", "Incident Service");
+        options.SwaggerEndpoint("/swagger/services/notification/v1/swagger.json", "Notification Service");
+    });
 }
 
 app.UseHttpsRedirection();

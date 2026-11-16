@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Notification.Application.Abstractions;
 using Notification.Application.Services;
+using Notification.Infrastructure.Email;
 using Notification.Infrastructure.Messaging;
 using Notification.Infrastructure.Persistence;
 using Notification.Infrastructure.Services;
@@ -31,6 +32,10 @@ public static class DependencyInjection
         // Messaging Options & Background Consumer
         services.Configure<RabbitMqOptions>(configuration.GetSection(RabbitMqOptions.SectionName));
         services.AddHostedService<NotificationEventConsumer>();
+
+        services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        services.AddHostedService<EmailOutboxDispatcher>();
 
         // Application Services
         services.AddScoped<INotificationService, NotificationService>();

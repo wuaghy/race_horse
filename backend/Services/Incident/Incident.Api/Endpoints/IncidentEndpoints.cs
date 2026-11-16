@@ -12,7 +12,7 @@ public static class IncidentEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/incidents")
             .WithTags("Incidents")
-            .RequireAuthorization();
+            .RequireAuthorization("IncidentRead");
 
         group.MapPost("/", async (
             [FromBody] CreateIncidentRequest request,
@@ -24,6 +24,7 @@ public static class IncidentEndpoints
             var result = await service.CreateIncidentAsync(request, userId, ct);
             return Results.Created($"/api/v1/incidents/{result.Id}", ApiResponse<IncidentDto>.Success(result, "Incident reported successfully."));
         })
+        .RequireAuthorization("IncidentReport")
         .WithName("CreateIncident")
         .WithSummary("Report a new transport incident");
 
@@ -80,6 +81,7 @@ public static class IncidentEndpoints
             var result = await service.UpdateStatusAsync(id, request, userId, ct);
             return Results.Ok(ApiResponse<IncidentDto>.Success(result, "Incident status updated."));
         })
+        .RequireAuthorization("IncidentManage")
         .WithName("UpdateIncidentStatus")
         .WithSummary("Update incident status");
 
@@ -94,6 +96,7 @@ public static class IncidentEndpoints
             var result = await service.ResolveIncidentAsync(id, request, userId, ct);
             return Results.Ok(ApiResponse<IncidentDto>.Success(result, "Incident resolved successfully."));
         })
+        .RequireAuthorization("IncidentManage")
         .WithName("ResolveIncident")
         .WithSummary("Resolve incident with resolution notes");
 
@@ -120,6 +123,7 @@ public static class IncidentEndpoints
             return Results.Ok(ApiResponse<IncidentAttachmentDto>.Success(result, "Attachment uploaded successfully."));
         })
         .DisableAntiforgery()
+        .RequireAuthorization("IncidentReport")
         .WithName("UploadIncidentAttachment")
         .WithSummary("Upload photo or document attachment for an incident");
 

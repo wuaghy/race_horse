@@ -10,37 +10,46 @@ public static class GpsTrackingEndpoints
     {
         var gps = app.MapGroup("/api/v1/trips/{tripId:guid}/gps")
             .WithTags("GPS Tracking")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCustomerTripOwnership();
 
         gps.MapPost("/points", IngestGpsPoint)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("IngestGpsPoint")
             .WithOpenApi();
 
         gps.MapGet("/points", GetGpsPoints)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetGpsPoints")
             .WithOpenApi();
 
         gps.MapGet("/points/latest", GetLatestGpsPoint)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetLatestGpsPoint")
             .WithOpenApi();
 
         gps.MapGet("/locations", GetLocationHistory)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetLocationHistory")
             .WithOpenApi();
 
         gps.MapPost("/locations", RecordLocationHistory)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("RecordLocationHistory")
             .WithOpenApi();
 
         var eta = app.MapGroup("/api/v1/trips/{tripId:guid}/eta")
             .WithTags("ETA Tracking")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCustomerTripOwnership();
 
         eta.MapPost("/calculate", CalculateEta)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("CalculateEta")
             .WithOpenApi();
 
         eta.MapGet("/current", GetCurrentEta)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetCurrentEta")
             .WithOpenApi();
     }

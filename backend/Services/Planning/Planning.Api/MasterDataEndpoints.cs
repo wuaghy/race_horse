@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using BuildingBlocks.Api;
 using Planning.Application.DTOs.Common;
 using Planning.Application.DTOs.MasterData;
@@ -7,6 +8,20 @@ namespace Planning.Api;
 
 public static class MasterDataEndpoints
 {
+    public static RouteGroupBuilder MapCustomerCountryLookup(this RouteGroupBuilder api)
+    {
+        api.MapGet("/customer/countries", async ([AsParameters] PaginationFilter filter, IFleetMasterDataService svc, CancellationToken ct) =>
+        {
+            var result = await svc.GetCountriesAsync(filter, ct);
+            return Results.Ok(ApiResponse<IReadOnlyList<CountryDto>>.Success(result.Items,
+                new PaginationMeta { Page = result.Page, PageSize = result.PageSize, TotalItems = result.TotalItems, TotalPages = result.TotalPages }));
+        }).WithName("ListCountryNamesForCustomerAndCompliance");
+        api.MapGet("/customer/countries/{id:guid}", async (Guid id, IFleetMasterDataService svc, CancellationToken ct) =>
+            Results.Ok(ApiResponse<CountryDto>.Success(await svc.GetCountryByIdAsync(id, ct))))
+            .WithName("GetCountryNameForCustomerHorseDetails");
+        return api;
+    }
+
     public static RouteGroupBuilder MapPlanningMasterData(this RouteGroupBuilder api)
     {
         // ----------------------------------------------------
@@ -34,16 +49,24 @@ public static class MasterDataEndpoints
         {
             var created = await svc.CreateCountryAsync(input, ct);
             return Results.Created($"/api/v1/countries/{created.Id}", ApiResponse<CountryDto>.Success(created, "Country created successfully"));
-        });
+        }).RequireAuthorization("PlanningDataAdmin");
 
         api.MapPut("/countries/{id:guid}", async (Guid id, CountryInput input, IFleetMasterDataService svc, CancellationToken ct) =>
-            Results.Ok(ApiResponse<CountryDto>.Success(await svc.UpdateCountryAsync(id, input, ct), "Country updated successfully")));
+            Results.Ok(ApiResponse<CountryDto>.Success(await svc.UpdateCountryAsync(id, input, ct), "Country updated successfully")))
+            .RequireAuthorization("PlanningDataAdmin");
+
+        api.MapPut("/countries/{id:guid}/support", async (Guid id, SupportFlagInput input, IFleetMasterDataService svc, CancellationToken ct) =>
+        {
+            var existing = await svc.GetCountryByIdAsync(id, ct);
+            var updated = await svc.UpdateCountryAsync(id, new CountryInput(existing.IsoCode, existing.Name, input.Active), ct);
+            return Results.Ok(ApiResponse<CountryDto>.Success(updated, "Country support updated."));
+        }).RequireAuthorization("CountrySupportAdmin");
 
         api.MapDelete("/countries/{id:guid}", async (Guid id, IFleetMasterDataService svc, CancellationToken ct) =>
         {
             await svc.DeleteCountryAsync(id, ct);
             return Results.NoContent();
-        });
+        }).RequireAuthorization("PlanningDataAdmin");
 
         // ----------------------------------------------------
         // Locations
@@ -178,16 +201,17 @@ public static class MasterDataEndpoints
         {
             var created = await svc.CreateAirlineAsync(input, ct);
             return Results.Created($"/api/v1/airlines/{created.Id}", ApiResponse<AirlineDto>.Success(created, "Airline created successfully"));
-        });
+        }).RequireAuthorization("PlanningDataAdmin");
 
         api.MapPut("/airlines/{id:guid}", async (Guid id, AirlineInput input, IFleetMasterDataService svc, CancellationToken ct) =>
-            Results.Ok(ApiResponse<AirlineDto>.Success(await svc.UpdateAirlineAsync(id, input, ct), "Airline updated successfully")));
+            Results.Ok(ApiResponse<AirlineDto>.Success(await svc.UpdateAirlineAsync(id, input, ct), "Airline updated successfully")))
+            .RequireAuthorization("PlanningDataAdmin");
 
         api.MapDelete("/airlines/{id:guid}", async (Guid id, IFleetMasterDataService svc, CancellationToken ct) =>
         {
             await svc.DeleteAirlineAsync(id, ct);
             return Results.NoContent();
-        });
+        }).RequireAuthorization("PlanningDataAdmin");
 
         // ----------------------------------------------------
         // Flight Bookings
@@ -214,16 +238,33 @@ public static class MasterDataEndpoints
         {
             var created = await svc.CreateFlightBookingAsync(input, ct);
             return Results.Created($"/api/v1/flight-bookings/{created.Id}", ApiResponse<FlightBookingDto>.Success(created, "Flight booking created successfully"));
-        });
+        }).RequireAuthorization("PlanningDataAdmin");
 
         api.MapPut("/flight-bookings/{id:guid}", async (Guid id, FlightInput input, IFleetMasterDataService svc, CancellationToken ct) =>
-            Results.Ok(ApiResponse<FlightBookingDto>.Success(await svc.UpdateFlightBookingAsync(id, input, ct), "Flight booking updated successfully")));
+            Results.Ok(ApiResponse<FlightBookingDto>.Success(await svc.UpdateFlightBookingAsync(id, input, ct), "Flight booking updated successfully")))
+            .RequireAuthorization("PlanningDataAdmin");
+
+        api.MapPost("/flight-bookings/{id:guid}/confirm", async (Guid id, ClaimsPrincipal principal, IFleetMasterDataService svc, CancellationToken ct) =>
+        {
+            var actor = Guid.TryParse(principal.FindFirstValue("sub") ?? principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : Guid.Empty;
+            if (actor == Guid.Empty) return Results.Unauthorized();
+            var booking = await svc.SetFlightBookingConfirmationAsync(id, actor, "CONFIRMED", ct);
+            return Results.Ok(ApiResponse<FlightBookingDto>.Success(booking, "Manual flight booking confirmation recorded."));
+        }).RequireAuthorization("FlightBookingManage").WithName("ConfirmInternalFlightBooking");
+
+        api.MapPost("/flight-bookings/{id:guid}/cancel", async (Guid id, ClaimsPrincipal principal, IFleetMasterDataService svc, CancellationToken ct) =>
+        {
+            var actor = Guid.TryParse(principal.FindFirstValue("sub") ?? principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : Guid.Empty;
+            if (actor == Guid.Empty) return Results.Unauthorized();
+            var booking = await svc.SetFlightBookingConfirmationAsync(id, actor, "CANCELLED", ct);
+            return Results.Ok(ApiResponse<FlightBookingDto>.Success(booking, "Flight booking cancelled."));
+        }).RequireAuthorization("FlightBookingManage").WithName("CancelInternalFlightBooking");
 
         api.MapDelete("/flight-bookings/{id:guid}", async (Guid id, IFleetMasterDataService svc, CancellationToken ct) =>
         {
             await svc.DeleteFlightBookingAsync(id, ct);
             return Results.NoContent();
-        });
+        }).RequireAuthorization("PlanningDataAdmin");
 
         // ----------------------------------------------------
         // Availability Queries (T09)
@@ -240,3 +281,5 @@ public static class MasterDataEndpoints
         return api;
     }
 }
+
+public sealed record SupportFlagInput(bool Active);

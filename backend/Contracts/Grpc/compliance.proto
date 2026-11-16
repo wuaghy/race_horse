@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+option csharp_namespace = "Contracts.Grpc.Compliance";
+package racehorse.compliance.v1;
+
+service ComplianceQuery {
+  rpc GetHorseDocumentChecklist (GetHorseDocumentChecklistRequest) returns (HorseDocumentChecklistReply);
+  rpc ReviewTransportRequestDocument (ReviewTransportRequestDocumentRequest) returns (ReviewTransportRequestDocumentReply);
+  rpc EvaluateTripReadiness (EvaluateTripReadinessRequest) returns (EvaluateTripReadinessReply);
+}
+
+message EvaluateTripReadinessRequest {
+  string trip_id = 1;
+  repeated string request_ids = 2;
+  repeated string horse_ids = 3;
+  repeated ComplianceRouteLeg route_legs = 4;
+}
+
+message ComplianceRouteLeg {
+  string route_leg_id = 1;
+  string origin_country_id = 2;
+  string destination_country_id = 3;
+  string planned_departure_at = 4; // RFC 3339 timestamp
+  string planned_arrival_at = 5;   // RFC 3339 timestamp
+}
+
+message EvaluateTripReadinessReply {
+  string trip_id = 1;
+  bool is_ready = 2;
+  repeated string blockers = 3;
+  repeated ComplianceRequirementResult requirements = 4;
+  repeated ClearanceRequirementResult clearances = 5;
+  string evaluated_at = 6; // RFC 3339 timestamp
+}
+
+message ComplianceRequirementResult {
+  string rule_code = 1;
+  string document_type_code = 2;
+  string target_scope = 3;
+  string target_entity_id = 4;
+  bool is_met = 5;
+  string status = 6;
+  string notes = 7;
+  string route_leg_id = 8;
+}
+
+message ClearanceRequirementResult {
+  string route_leg_id = 1;
+  string country_id = 2;
+  string clearance_type = 3;
+  string case_id = 4;
+  bool is_required = 5;
+  bool is_met = 6;
+  string status = 7;
+  string notes = 8;
+}
+
+message ReviewTransportRequestDocumentRequest {
+  string request_id = 1;
+  string horse_id = 2;
+  string document_id = 3;
+  string reviewer_user_id = 4;
+  string comment = 5;
+  string customer_user_id = 6;
+}
+
+message ReviewTransportRequestDocumentReply {
+  string document_id = 1;
+  string status = 2;
+}
+
+message GetHorseDocumentChecklistRequest {
+  string customer_user_id = 1;
+  repeated string horse_ids = 2;
+  string origin_country_id = 3;
+  string destination_country_id = 4;
+  string departure_date = 5;
+  string request_id = 6;
+}
+
+message HorseDocumentChecklistReply {
+  repeated HorseDocumentChecklistItem items = 1;
+}
+
+message HorseDocumentChecklistItem {
+  string horse_id = 1;
+  string document_type_code = 2;
+  string document_type_name = 3;
+  bool met = 4;
+  string status = 5;
+  string document_no = 6;
+  string expiry_date = 7;
+  bool uploaded = 8;
+}

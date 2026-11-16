@@ -13,6 +13,7 @@ public class NotificationDbContext : DbContext, INotificationDbContext
     public DbSet<Notification.Domain.Entities.Notification> Notifications => Set<Notification.Domain.Entities.Notification>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
+    public DbSet<EmailOutboxMessage> EmailOutboxMessages => Set<EmailOutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -54,6 +55,23 @@ public class NotificationDbContext : DbContext, INotificationDbContext
             entity.Property(e => e.EventType).HasMaxLength(150).IsRequired();
             entity.HasIndex(e => e.EventId).IsUnique();
             entity.Property(e => e.ProcessedAt).HasPrecision(3);
+        });
+
+        modelBuilder.Entity<EmailOutboxMessage>(entity =>
+        {
+            entity.ToTable("EmailOutboxMessages");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ToEmail).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.Subject).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.HtmlBody).IsRequired();
+            entity.Property(e => e.TextBody).IsRequired();
+            entity.Property(e => e.Status).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.LastError).HasMaxLength(2000);
+            entity.Property(e => e.NextAttemptAt).HasPrecision(3);
+            entity.Property(e => e.CreatedAt).HasPrecision(3);
+            entity.Property(e => e.SentAt).HasPrecision(3);
+            entity.HasIndex(e => e.EventId).IsUnique();
+            entity.HasIndex(e => new { e.Status, e.NextAttemptAt, e.CreatedAt });
         });
     }
 }

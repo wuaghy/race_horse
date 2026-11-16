@@ -1,4 +1,5 @@
 using Tracking.Application.Services;
+using Tracking.Application.DTOs;
 using Tracking.Domain;
 
 namespace Tracking.Infrastructure.Repositories;
@@ -26,6 +27,18 @@ public class InMemoryTripExecutionRepository : ITripExecutionRepository
     {
         _store.TryGetValue(tripId, out var trip);
         return Task.FromResult(trip);
+    }
+
+    public Task<PagedTrackingResult<TripExecution>> ListAsync(int page, int pageSize, string? search, string? status, string? sortDirection, CancellationToken cancellationToken, IReadOnlyCollection<Guid>? allowedTripIds = null)
+    {
+        var filtered = _store.Values.AsEnumerable();
+        if (allowedTripIds is not null) filtered = filtered.Where(item => allowedTripIds.Contains(item.TripId));
+        if (!string.IsNullOrWhiteSpace(search)) filtered = filtered.Where(item => item.TripNo.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase) || item.TripId.ToString().Contains(search.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(status)) filtered = filtered.Where(item => string.Equals(item.Status, status.Trim(), StringComparison.OrdinalIgnoreCase));
+        var ordered = string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase) ? filtered.OrderBy(item => item.UpdatedAt) : filtered.OrderByDescending(item => item.UpdatedAt);
+        var size = Math.Clamp(pageSize, 1, 100); var current = Math.Max(page, 0);
+        var items = ordered.Skip(current * size).Take(size).ToList();
+        return Task.FromResult(new PagedTrackingResult<TripExecution>(items, current, size, filtered.LongCount()));
     }
 }
 

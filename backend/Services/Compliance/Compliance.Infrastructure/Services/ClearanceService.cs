@@ -17,6 +17,61 @@ public class ClearanceService : IClearanceService
         _db = db;
     }
 
+    public async Task<IReadOnlyList<ClearanceCaseDto>> GetAllClearanceCasesAsync(
+        string? search = null,
+        string? status = null,
+        Guid? countryId = null,
+        string? sortBy = null,
+        string? sortDirection = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _db.ClearanceCases
+            .Include(c => c.ClearanceCaseDocuments)
+                .ThenInclude(ccd => ccd.Document)
+                    .ThenInclude(d => d!.DocumentType)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(c => c.CaseNo.Contains(term)
+                || c.AuthorityName.Contains(term)
+                || (c.ReferenceNumber != null && c.ReferenceNumber.Contains(term))
+                || (c.Notes != null && c.Notes.Contains(term))
+                || (c.RejectionReason != null && c.RejectionReason.Contains(term)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var normalizedStatus = status.Trim().ToUpperInvariant();
+            if (!ClearanceStatus.All.Contains(normalizedStatus))
+                throw new ArgumentException($"Unsupported clearance status '{status}'.");
+            query = query.Where(c => c.Status == normalizedStatus);
+        }
+
+        if (countryId.HasValue)
+            query = query.Where(c => c.CountryId == countryId.Value);
+
+        var ascending = string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase);
+        var ordered = (sortBy ?? "updatedAt").Trim().ToLowerInvariant() switch
+        {
+            "caseno" => ascending ? query.OrderBy(c => c.CaseNo) : query.OrderByDescending(c => c.CaseNo),
+            "trip" or "tripid" => ascending ? query.OrderBy(c => c.TripId) : query.OrderByDescending(c => c.TripId),
+            "country" or "countryid" => ascending ? query.OrderBy(c => c.CountryId) : query.OrderByDescending(c => c.CountryId),
+            "status" => ascending ? query.OrderBy(c => c.Status) : query.OrderByDescending(c => c.Status),
+            "authority" or "authorityname" => ascending ? query.OrderBy(c => c.AuthorityName) : query.OrderByDescending(c => c.AuthorityName),
+            "createdat" => ascending ? query.OrderBy(c => c.CreatedAt) : query.OrderByDescending(c => c.CreatedAt),
+            _ => ascending ? query.OrderBy(c => c.UpdatedAt) : query.OrderByDescending(c => c.UpdatedAt)
+        };
+
+        var list = await ordered
+            .ThenBy(c => c.CaseNo)
+            .ToListAsync(cancellationToken);
+
+        return list.Select(MapClearanceCaseToDto).ToList();
+    }
+
     public async Task<IReadOnlyList<ClearanceCaseDto>> GetClearanceCasesByTripAsync(Guid tripId, CancellationToken cancellationToken = default)
     {
         var list = await _db.ClearanceCases
@@ -45,6 +100,10 @@ public class ClearanceService : IClearanceService
 
     public async Task<ClearanceCaseDto> CreateClearanceCaseAsync(Guid createdByUserId, CreateClearanceCaseRequest request, CancellationToken cancellationToken = default)
     {
+        var clearanceType = request.ClearanceType?.Trim().ToUpperInvariant();
+        if (clearanceType is null || !ClearanceTypes.All.Contains(clearanceType, StringComparer.Ordinal))
+            throw new ArgumentException("Clearance type must be CUSTOMS, QUARANTINE, or INSPECTION.", nameof(request.ClearanceType));
+
         var datePrefix = DateTime.UtcNow.ToString("yyyyMMdd");
         var randomSuffix = Random.Shared.Next(1000, 9999);
         var caseNo = $"CLR-{datePrefix}-{randomSuffix}";
@@ -55,6 +114,7 @@ public class ClearanceService : IClearanceService
             CaseNo = caseNo,
             TripId = request.TripId,
             RouteLegId = request.RouteLegId,
+            ClearanceType = clearanceType,
             CountryId = request.CountryId,
             BorderPointId = request.BorderPointId,
             AuthorityName = request.AuthorityName.Trim(),
@@ -253,6 +313,7 @@ public class ClearanceService : IClearanceService
             c.CaseNo,
             c.TripId,
             c.RouteLegId,
+            c.ClearanceType,
             c.CountryId,
             c.BorderPointId,
             c.AuthorityName,

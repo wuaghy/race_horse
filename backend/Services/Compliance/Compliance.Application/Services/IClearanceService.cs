@@ -4,6 +4,13 @@ namespace Compliance.Application.Services;
 
 public interface IClearanceService
 {
+    Task<IReadOnlyList<ClearanceCaseDto>> GetAllClearanceCasesAsync(
+        string? search = null,
+        string? status = null,
+        Guid? countryId = null,
+        string? sortBy = null,
+        string? sortDirection = null,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ClearanceCaseDto>> GetClearanceCasesByTripAsync(Guid tripId, CancellationToken cancellationToken = default);
     Task<ClearanceCaseDto?> GetClearanceCaseByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<ClearanceCaseDto> CreateClearanceCaseAsync(Guid createdByUserId, CreateClearanceCaseRequest request, CancellationToken cancellationToken = default);

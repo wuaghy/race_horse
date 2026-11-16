@@ -10,33 +10,41 @@ public static class HorseHealthEndpoints
     {
         var health = app.MapGroup("/api/v1/trips/{tripId:guid}/horses/{horseId:guid}/health")
             .WithTags("Horse Health")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCustomerTripOwnership();
 
         health.MapPost("/logs", RecordHealthLog)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("RecordHealthLog")
             .WithOpenApi();
 
         health.MapGet("/logs", GetHealthLogs)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetHealthLogs")
             .WithOpenApi();
 
         health.MapGet("/logs/{logId:guid}", GetHealthLog)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetHealthLog")
             .WithOpenApi();
 
         health.MapPost("/alerts", CreateHealthAlert)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("CreateHealthAlert")
             .WithOpenApi();
 
         health.MapGet("/alerts", GetHealthAlerts)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetHealthAlerts")
             .WithOpenApi();
 
         health.MapPost("/alerts/{alertId:guid}/acknowledge", AcknowledgeAlert)
+            .RequireAuthorization("TrackingUpdate")
             .WithName("AcknowledgeAlert")
             .WithOpenApi();
 
         health.MapGet("/status", GetHealthStatus)
+            .RequireAuthorization("TrackingRead")
             .WithName("GetHealthStatus")
             .WithOpenApi();
     }

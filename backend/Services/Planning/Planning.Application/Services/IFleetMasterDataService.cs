@@ -14,6 +14,7 @@ public interface IFleetMasterDataService
 
     // Locations
     Task<PagedResult<LocationDto>> GetLocationsAsync(PaginationFilter filter, CancellationToken ct = default);
+    Task<NearestReceivingLocationDto?> FindNearestReceivingLocationAsync(decimal latitude, decimal longitude, CancellationToken ct = default);
     Task<LocationDto> GetLocationByIdAsync(Guid id, CancellationToken ct = default);
     Task<LocationDto> CreateLocationAsync(LocationInput input, CancellationToken ct = default);
     Task<LocationDto> UpdateLocationAsync(Guid id, LocationInput input, CancellationToken ct = default);
@@ -45,5 +46,6 @@ public interface IFleetMasterDataService
     Task<FlightBookingDto> GetFlightBookingByIdAsync(Guid id, CancellationToken ct = default);
     Task<FlightBookingDto> CreateFlightBookingAsync(FlightInput input, CancellationToken ct = default);
     Task<FlightBookingDto> UpdateFlightBookingAsync(Guid id, FlightInput input, CancellationToken ct = default);
+    Task<FlightBookingDto> SetFlightBookingConfirmationAsync(Guid id, Guid actorUserId, string status, CancellationToken ct = default);
     Task DeleteFlightBookingAsync(Guid id, CancellationToken ct = default);
 }

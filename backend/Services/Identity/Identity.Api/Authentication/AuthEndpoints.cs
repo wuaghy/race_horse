@@ -109,7 +109,7 @@ public sealed record RegisterRequest
     [Required, EmailAddress, MaxLength(255)]
     public required string Email { get; init; }
 
-    [Required, MinLength(12), MaxLength(128)]
+    [Required, MinLength(8), MaxLength(128)]
     public required string Password { get; init; }
 
     [Required, MaxLength(200)]
