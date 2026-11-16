@@ -23,6 +23,7 @@ public sealed record HorseRecord(
     DateOnly? DateOfBirth,
     string? Color,
     Guid? CountryOfOriginId,
+    string? CountryOfOriginName,
     string? SpecialRequirements,
     string Status,
     int VersionNo);
@@ -50,6 +51,7 @@ public sealed record HorseInput(
     DateOnly? DateOfBirth,
     string? Color,
     Guid? CountryOfOriginId,
+    string? CountryOfOriginName,
     string? SpecialRequirements,
     int? VersionNo);
 
@@ -71,6 +73,8 @@ public interface ICustomerHorseService
         int pageSize,
         string? search,
         string? status,
+        string? sortBy,
+        string? sortDirection,
         CancellationToken cancellationToken);
 
     Task<HorseRecord?> GetHorseAsync(Guid identityUserId, Guid horseId, CancellationToken cancellationToken);

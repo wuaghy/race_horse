@@ -87,8 +87,8 @@ public sealed class BookingEventConsumer : BackgroundService
                 return;
             }
 
-            var (tripId, orderId) = ReadCompletionIds(body);
-            UpdateOrderCompletedAsync(orderId, tripId, cancellationToken).GetAwaiter().GetResult();
+            var (tripId, orderIds) = ReadCompletionIds(body);
+            UpdateOrdersCompletedAsync(orderIds, tripId, cancellationToken).GetAwaiter().GetResult();
             channel.BasicAck(delivery.DeliveryTag, multiple: false);
         }
         catch (Exception exception)
@@ -98,56 +98,58 @@ public sealed class BookingEventConsumer : BackgroundService
         }
     }
 
-    private async Task UpdateOrderCompletedAsync(Guid orderId, Guid tripId, CancellationToken cancellationToken)
+    private async Task UpdateOrdersCompletedAsync(IReadOnlyList<Guid> orderIds, Guid tripId, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
-        await using var update = new SqlCommand(
-            "UPDATE dbo.TransportOrders " +
-            "SET Status = 'COMPLETED', UpdatedAt = SYSUTCDATETIME(), VersionNo = VersionNo + 1 " +
-            "WHERE Id = @OrderId AND Status NOT IN ('COMPLETED', 'CANCELLED');",
-            connection,
-            transaction);
-        update.Parameters.Add("@OrderId", SqlDbType.UniqueIdentifier).Value = orderId;
-        var changed = await update.ExecuteNonQueryAsync(cancellationToken);
-
-        if (changed == 0)
+        foreach (var orderId in orderIds.Distinct())
         {
-            await using var read = new SqlCommand(
-                "SELECT Status FROM dbo.TransportOrders WHERE Id = @OrderId;",
+            await using var update = new SqlCommand(
+                "UPDATE dbo.TransportOrders " +
+                "SET Status = 'COMPLETED', UpdatedAt = SYSUTCDATETIME(), VersionNo = VersionNo + 1 " +
+                "WHERE Id = @OrderId AND Status NOT IN ('COMPLETED', 'CANCELLED');",
                 connection,
                 transaction);
-            read.Parameters.Add("@OrderId", SqlDbType.UniqueIdentifier).Value = orderId;
-            var currentStatus = (string?)await read.ExecuteScalarAsync(cancellationToken);
-            if (currentStatus is null)
-                throw new InvalidOperationException($"Trip {tripId} completed, but Order {orderId} was not found.");
-            if (currentStatus == "CANCELLED")
-                _logger.LogWarning("Not completing cancelled Order {OrderId} for completed Trip {TripId}.", orderId, tripId);
+            update.Parameters.Add("@OrderId", SqlDbType.UniqueIdentifier).Value = orderId;
+            var changed = await update.ExecuteNonQueryAsync(cancellationToken);
+            if (changed == 0)
+            {
+                await using var read = new SqlCommand("SELECT Status FROM dbo.TransportOrders WHERE Id = @OrderId;", connection, transaction);
+                read.Parameters.Add("@OrderId", SqlDbType.UniqueIdentifier).Value = orderId;
+                var currentStatus = (string?)await read.ExecuteScalarAsync(cancellationToken);
+                if (currentStatus is null)
+                    throw new InvalidOperationException($"Trip {tripId} completed, but Order {orderId} was not found.");
+                if (currentStatus == "CANCELLED")
+                    _logger.LogWarning("Not completing cancelled Order {OrderId} for completed Trip {TripId}.", orderId, tripId);
+                else
+                    _logger.LogInformation("Order {OrderId} was already completed for Trip {TripId}; duplicate event is harmless.", orderId, tripId);
+            }
             else
-                _logger.LogInformation("Order {OrderId} was already completed for Trip {TripId}; duplicate event is harmless.", orderId, tripId);
-        }
-        else
-        {
-            _logger.LogInformation("Marked Order {OrderId} completed from TripCompleted event for Trip {TripId}.", orderId, tripId);
+                _logger.LogInformation("Marked Order {OrderId} completed from TripCompleted event for Trip {TripId}.", orderId, tripId);
         }
 
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static (Guid TripId, Guid OrderId) ReadCompletionIds(string body)
+    private static (Guid TripId, IReadOnlyList<Guid> OrderIds) ReadCompletionIds(string body)
     {
         using var document = JsonDocument.Parse(body);
         var data = FindProperty(document.RootElement, "data");
         if (data.ValueKind == JsonValueKind.Object && TryFindProperty(data, "data", out var nestedData) && nestedData.ValueKind == JsonValueKind.Object)
             data = nestedData;
 
-        if (!Guid.TryParse(FindProperty(data, "tripId").GetString(), out var tripId) ||
-            !Guid.TryParse(FindProperty(data, "orderId").GetString(), out var orderId))
-            throw new InvalidOperationException("Planning.TripCompleted must include valid tripId and orderId values.");
+        if (!Guid.TryParse(FindProperty(data, "tripId").GetString(), out var tripId))
+            throw new InvalidOperationException("Planning.TripCompleted must include a valid tripId.");
+        var orderIds = new List<Guid>();
+        if (TryFindProperty(data, "orderIds", out var ids) && ids.ValueKind == JsonValueKind.Array)
+            orderIds.AddRange(ids.EnumerateArray().Select(item => Guid.TryParse(item.GetString(), out var parsed) ? parsed : Guid.Empty).Where(id => id != Guid.Empty));
+        if (orderIds.Count == 0 && TryFindProperty(data, "orderId", out var single) && Guid.TryParse(single.GetString(), out var orderId))
+            orderIds.Add(orderId);
+        if (orderIds.Count == 0) throw new InvalidOperationException("Planning.TripCompleted must include at least one valid order ID.");
 
-        return (tripId, orderId);
+        return (tripId, orderIds.Distinct().ToArray());
     }
 
     private static JsonElement FindProperty(JsonElement element, string propertyName) =>

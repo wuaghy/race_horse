@@ -11,6 +11,7 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
+    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
     <PackageReference Include="Grpc.Tools" Version="2.72.0" PrivateAssets="All" />
   </ItemGroup>
 
@@ -22,6 +23,8 @@
 
   <ItemGroup>
     <Protobuf Include="..\..\..\Contracts\Grpc\customer_profile.proto" GrpcServices="Server" Link="Protos\customer_profile.proto" />
+    <Protobuf Include="..\..\..\Contracts\Grpc\planning.proto" GrpcServices="Client" Link="Protos\planning.proto" />
+    <Protobuf Include="..\..\..\Contracts\Grpc\compliance.proto" GrpcServices="Client" Link="Protos\compliance.proto" />
   </ItemGroup>
 
 </Project>

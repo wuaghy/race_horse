@@ -4,7 +4,12 @@ public sealed record TripCompletedData(
     Guid TripId,
     string TripNo,
     Guid OrderId,
-    string Status);
+    string Status,
+    Guid? RequestId = null,
+    Guid? CustomerUserId = null,
+    string? CustomerEmail = null,
+    string? RequestNo = null,
+    string? OrderNo = null);
 
 public sealed record TripCompletedEvent : IntegrationEvent<TripCompletedData>
 {

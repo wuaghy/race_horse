@@ -107,11 +107,22 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         int pageSize,
         string? search,
         string? status,
+        string? sortBy,
+        string? sortDirection,
         CancellationToken cancellationToken)
     {
         ValidatePage(page, pageSize);
         search = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
         status = string.IsNullOrWhiteSpace(status) ? null : status.Trim().ToUpperInvariant();
+        sortBy = string.IsNullOrWhiteSpace(sortBy) ? "name" : sortBy.Trim().ToLowerInvariant();
+        sortDirection = string.IsNullOrWhiteSpace(sortDirection) ? "asc" : sortDirection.Trim().ToLowerInvariant();
+        if (sortBy is not ("name" or "status"))
+            throw new BusinessRuleException("Horse sortBy must be 'name' or 'status'.", "SORT_FIELD_INVALID", "sortBy");
+        if (sortDirection is not ("asc" or "desc"))
+            throw new BusinessRuleException("Sort direction must be 'asc' or 'desc'.", "SORT_DIRECTION_INVALID", "sortDirection");
+        var orderBy = sortBy == "status"
+            ? $"Status {sortDirection.ToUpperInvariant()}, HorseName ASC, Id ASC"
+            : $"HorseName {sortDirection.ToUpperInvariant()}, Id ASC";
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         var customerId = await GetCustomerIdAsync(connection, identityUserId, cancellationToken);
@@ -128,8 +139,8 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         var total = (long)(await count.ExecuteScalarAsync(cancellationToken) ?? 0L);
 
         await using var command = new SqlCommand(
-            "SELECT Id, HorseCode, HorseName, RegistrationNumber, PassportNumber, Breed, Sex, DateOfBirth, Color, CountryOfOriginId, SpecialRequirements, Status, VersionNo " +
-            $"FROM dbo.Horses WHERE {filter} ORDER BY HorseName, Id OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;",
+            "SELECT Id, HorseCode, HorseName, RegistrationNumber, PassportNumber, Breed, Sex, DateOfBirth, Color, CountryOfOriginId, CountryOfOriginName, SpecialRequirements, Status, VersionNo " +
+            $"FROM dbo.Horses WHERE {filter} ORDER BY {orderBy} OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;",
             connection);
         command.Parameters.Add("@CustomerId", SqlDbType.UniqueIdentifier).Value = customerId.Value;
         command.Parameters.Add("@Search", SqlDbType.NVarChar, 200).Value = (object?)search ?? DBNull.Value;
@@ -152,7 +163,7 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = new SqlCommand(
-            "SELECT h.Id, h.HorseCode, h.HorseName, h.RegistrationNumber, h.PassportNumber, h.Breed, h.Sex, h.DateOfBirth, h.Color, h.CountryOfOriginId, h.SpecialRequirements, h.Status, h.VersionNo " +
+            "SELECT h.Id, h.HorseCode, h.HorseName, h.RegistrationNumber, h.PassportNumber, h.Breed, h.Sex, h.DateOfBirth, h.Color, h.CountryOfOriginId, h.CountryOfOriginName, h.SpecialRequirements, h.Status, h.VersionNo " +
             "FROM dbo.Horses h INNER JOIN dbo.Customers c ON c.Id = h.OwnerCustomerId " +
             "WHERE h.Id = @HorseId AND c.IdentityUserId = @IdentityUserId;",
             connection);
@@ -169,8 +180,8 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         var customerId = await RequireCustomerIdAsync(connection, identityUserId, cancellationToken);
         var horseId = Guid.NewGuid();
         await using var command = new SqlCommand(
-            "INSERT INTO dbo.Horses (Id, HorseCode, OwnerCustomerId, HorseName, RegistrationNumber, PassportNumber, Breed, Sex, DateOfBirth, Color, CountryOfOriginId, SpecialRequirements, Status) " +
-            "VALUES (@Id, @HorseCode, @CustomerId, @HorseName, @RegistrationNumber, @PassportNumber, @Breed, @Sex, @DateOfBirth, @Color, @CountryId, @SpecialRequirements, 'ACTIVE');",
+            "INSERT INTO dbo.Horses (Id, HorseCode, OwnerCustomerId, HorseName, RegistrationNumber, PassportNumber, Breed, Sex, DateOfBirth, Color, CountryOfOriginId, CountryOfOriginName, SpecialRequirements, Status) " +
+            "VALUES (@Id, @HorseCode, @CustomerId, @HorseName, @RegistrationNumber, @PassportNumber, @Breed, @Sex, @DateOfBirth, @Color, @CountryId, @CountryName, @SpecialRequirements, 'ACTIVE');",
             connection);
         AddHorseParameters(command, input);
         command.Parameters.Add("@Id", SqlDbType.UniqueIdentifier).Value = horseId;
@@ -191,7 +202,7 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         await connection.OpenAsync(cancellationToken);
         await using var command = new SqlCommand(
             "UPDATE h SET HorseName = @HorseName, RegistrationNumber = @RegistrationNumber, PassportNumber = @PassportNumber, " +
-            "Breed = @Breed, Sex = @Sex, DateOfBirth = @DateOfBirth, Color = @Color, CountryOfOriginId = @CountryId, " +
+            "Breed = @Breed, Sex = @Sex, DateOfBirth = @DateOfBirth, Color = @Color, CountryOfOriginId = @CountryId, CountryOfOriginName = @CountryName, " +
             "SpecialRequirements = @SpecialRequirements, UpdatedAt = SYSUTCDATETIME(), VersionNo = VersionNo + 1 " +
             "FROM dbo.Horses h INNER JOIN dbo.Customers c ON c.Id = h.OwnerCustomerId " +
             "WHERE h.Id = @HorseId AND c.IdentityUserId = @IdentityUserId AND h.VersionNo = @VersionNo;",
@@ -255,7 +266,8 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         reader.IsDBNull(8) ? null : reader.GetString(8),
         reader.IsDBNull(9) ? null : reader.GetGuid(9),
         reader.IsDBNull(10) ? null : reader.GetString(10),
-        reader.GetString(11), reader.GetInt32(12));
+        reader.IsDBNull(11) ? null : reader.GetString(11),
+        reader.GetString(12), reader.GetInt32(13));
 
     private static void AddProfileParameters(SqlCommand command, Guid identityUserId, string email, CustomerProfileInput input)
     {
@@ -279,6 +291,7 @@ public sealed class SqlCustomerHorseService : ICustomerHorseService
         command.Parameters.Add("@DateOfBirth", SqlDbType.Date).Value = input.DateOfBirth is null ? DBNull.Value : input.DateOfBirth.Value.ToDateTime(TimeOnly.MinValue);
         command.Parameters.Add("@Color", SqlDbType.NVarChar, 100).Value = (object?)input.Color ?? DBNull.Value;
         command.Parameters.Add("@CountryId", SqlDbType.UniqueIdentifier).Value = (object?)input.CountryOfOriginId ?? DBNull.Value;
+        command.Parameters.Add("@CountryName", SqlDbType.NVarChar, 120).Value = (object?)input.CountryOfOriginName ?? DBNull.Value;
         command.Parameters.Add("@SpecialRequirements", SqlDbType.NVarChar, 1000).Value = (object?)input.SpecialRequirements ?? DBNull.Value;
     }
 

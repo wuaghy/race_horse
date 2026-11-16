@@ -10,7 +10,8 @@ public static class HorseHealthEndpoints
     {
         var health = app.MapGroup("/api/v1/trips/{tripId:guid}/horses/{horseId:guid}/health")
             .WithTags("Horse Health")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCustomerTripOwnership();
 
         health.MapPost("/logs", RecordHealthLog)
             .RequireAuthorization("TrackingUpdate")

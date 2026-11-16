@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tracking.Application.DTOs;
 using Tracking.Application.Services;
 using Tracking.Domain;
 using Tracking.Infrastructure.Persistence;
@@ -30,6 +31,19 @@ public class EFTripExecutionRepository : ITripExecutionRepository
     {
         return await _context.TripExecutions
             .FirstOrDefaultAsync(t => t.TripId == tripId, cancellationToken);
+    }
+
+    public async Task<PagedTrackingResult<TripExecution>> ListAsync(int page, int pageSize, string? search, string? status, string? sortDirection, CancellationToken cancellationToken, IReadOnlyCollection<Guid>? allowedTripIds = null)
+    {
+        var query = _context.TripExecutions.AsNoTracking();
+        if (allowedTripIds is not null) query = query.Where(item => allowedTripIds.Contains(item.TripId));
+        if (!string.IsNullOrWhiteSpace(search)) query = query.Where(item => item.TripNo.Contains(search.Trim()) || item.TripId.ToString().Contains(search.Trim()));
+        if (!string.IsNullOrWhiteSpace(status)) query = query.Where(item => item.Status == status.Trim().ToUpperInvariant());
+        var total = await query.LongCountAsync(cancellationToken);
+        var size = Math.Clamp(pageSize, 1, 100); var current = Math.Max(page, 0);
+        var items = await (string.Equals(sortDirection, "asc", StringComparison.OrdinalIgnoreCase) ? query.OrderBy(item => item.UpdatedAt) : query.OrderByDescending(item => item.UpdatedAt))
+            .Skip(current * size).Take(size).ToListAsync(cancellationToken);
+        return new PagedTrackingResult<TripExecution>(items, current, size, total);
     }
 }
 

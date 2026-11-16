@@ -24,7 +24,7 @@ docker compose ps
 
 The process-level values override the blank template entries in `.env`. Keep this PowerShell session open when issuing further Compose commands so Compose receives the same values. The generated JWT key is ephemeral; create a new one when starting a fresh local stack/session. Never commit `.env` or use local credentials in a shared or production environment.
 
-`SEED_DEMO_DATA` defaults to `false`. Set it to `true` before the first startup to create the sample Booking records and hashed Identity demo accounts. Seeding is idempotent and does not reset existing records. `DEMO_DATA_PASSWORD` can be changed; it must contain at least 12 characters. Do not enable demo seeding in a shared or production environment.
+`SEED_DEMO_DATA` defaults to `false`. Set it to `true` before the first startup to create the sample Booking records and hashed Identity demo accounts. Seeding is idempotent and does not reset existing records. `DEMO_DATA_PASSWORD` can be changed; it must contain at least 8 characters. Do not enable demo seeding in a shared or production environment.
 
 To start without sample data, set `$env:SEED_DEMO_DATA = 'false'`. JWT, SQL Server, RabbitMQ, and MinIO credentials are still required before `docker compose up -d --build`.
 
@@ -54,6 +54,7 @@ When demo seeding is enabled:
 |---|---|---|
 | Customer | `customer.demo@racehorse.local` | Value of `DEMO_DATA_PASSWORD` |
 | Logistics manager | `manager.demo@racehorse.local` | Value of `DEMO_DATA_PASSWORD` |
+| Horse escort | `escort.demo@racehorse.local` | Value of `DEMO_DATA_PASSWORD` |
 
 There is no committed fallback password. Set `DEMO_DATA_PASSWORD` before Compose startup when demo seeding is enabled. Demo accounts are reset to that configured password when the Identity API starts with demo seeding enabled.
 
@@ -66,11 +67,13 @@ The Booking seed creates a profile linked to the demo customer plus:
 | Horse | `DEMO-HORSE-001` (`Silver Comet`) | `ACTIVE` |
 | Horse | `DEMO-HORSE-002` (`Morning Star`) | `ACTIVE` |
 | Horse | `DEMO-HORSE-003` (`Riverstone`) | `ACTIVE` |
+| Horse | `DEMO-HORSE-006` (`Six Flow Runner`) | `ACTIVE`, reserved for the local six-flow walkthrough |
 | Draft request | `DEMO-REQ-DRAFT-001` | `DRAFT`, one horse |
 | Manager queue request | `DEMO-REQ-QUEUE-001` | `SUBMITTED`, two horses |
 | Manager queue request | `DEMO-REQ-QUEUE-002` | `SUBMITTED`, one horse |
 | Manager decision request | `DEMO-REQ-REVIEW-001` | `UNDER_REVIEW`, assigned to the demo manager |
 | Customer follow-up request | `DEMO-REQ-INFO-001` | `NEED_INFORMATION`, with a return reason |
+| Six-flow request | `DEMO-REQ-SIX-FLOW-001` | `SUBMITTED`, uses only `DEMO-HORSE-006`; no order, trip, documents or assignments yet |
 
 Origin and destination are logical Planning IDs. This local Booking slice does not verify those IDs against PlanningDb.
 

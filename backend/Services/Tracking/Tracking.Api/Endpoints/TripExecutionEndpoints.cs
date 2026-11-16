@@ -11,7 +11,8 @@ public static class TripExecutionEndpoints
     {
         var trips = app.MapGroup("/api/v1/trips")
             .WithTags("Trip Execution")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCustomerTripOwnership();
 
         trips.MapPost("/", InitiateTripExecution)
             .RequireAuthorization("TrackingUpdate")
@@ -21,6 +22,11 @@ public static class TripExecutionEndpoints
         trips.MapGet("/{tripId:guid}", GetTripExecution)
             .RequireAuthorization("TrackingRead")
             .WithName("GetTripExecution")
+            .WithOpenApi();
+
+        trips.MapGet("/", GetTripExecutions)
+            .RequireAuthorization("TrackingRead")
+            .WithName("ListTripExecutions")
             .WithOpenApi();
 
         trips.MapPost("/{tripId:guid}/departure", RecordTripDeparture)
@@ -57,9 +63,16 @@ public static class TripExecutionEndpoints
     private static async Task<IResult> InitiateTripExecution(
         InitiateTripExecutionInput input,
         ITripExecutionService service,
+        Tracking.Api.Grpc.PlanningGrpcClient planning,
         HttpContext context,
         CancellationToken cancellationToken)
     {
+        var trip = await planning.GetTripSummaryAsync(input.TripId, cancellationToken);
+        if (trip is null)
+            return Results.NotFound(ApiResponse<object>.Failure(40400, "Trip was not found in Planning service.", requestId: GetRequestId(context)));
+        if (!string.Equals(trip.Status, "READY", StringComparison.OrdinalIgnoreCase))
+            return Results.Conflict(ApiResponse<object>.Failure(40900, $"Trip is {trip.Status}; Logistics must confirm READY before execution can start.", requestId: GetRequestId(context)));
+
         var result = await service.InitiateTripExecutionAsync(input, cancellationToken);
         return Results.Created($"/api/v1/trips/{result.Id}",
             ApiResponse<TripExecutionDto>.Success(result, "Trip execution initiated.", GetRequestId(context)));
@@ -80,16 +93,35 @@ public static class TripExecutionEndpoints
         return Results.Ok(ApiResponse<TripExecutionDto>.Success(result, requestId: GetRequestId(context)));
     }
 
+    private static async Task<IResult> GetTripExecutions(int? page, int? pageSize, string? search, string? status, string? sortDirection, ClaimsPrincipal user, Tracking.Api.Grpc.PlanningGrpcClient planning, ITripExecutionService service, HttpContext context, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Guid>? customerTripIds = null;
+        if (user.IsInRole("CUSTOMER"))
+        {
+            if (!Guid.TryParse(user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId)) return Results.Unauthorized();
+            customerTripIds = await planning.GetCustomerTripIdsAsync(userId, cancellationToken);
+        }
+        var result = await service.GetTripExecutionsAsync(page ?? 0, pageSize ?? 20, search, status, sortDirection, cancellationToken, customerTripIds);
+        return Results.Ok(ApiResponse<IReadOnlyList<TripExecutionDto>>.Success(result.Items, new PaginationMeta { Page = result.Page, PageSize = result.PageSize, TotalItems = result.TotalItems, TotalPages = result.TotalPages }, requestId: GetRequestId(context)));
+    }
+
     private static async Task<IResult> RecordTripDeparture(
         Guid tripId,
         RecordTripDepartureRequest request,
         ClaimsPrincipal user,
         ITripExecutionService service,
+        Tracking.Api.Grpc.PlanningGrpcClient planning,
         HttpContext context,
         CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actorUserId))
             return Results.Unauthorized();
+        var readiness = await planning.ValidateTripDepartureAsync(tripId, cancellationToken);
+        if (!readiness.Allowed)
+            return Results.Conflict(ApiResponse<object>.Failure(40900,
+                string.IsNullOrWhiteSpace(readiness.Status) ? "Trip is not ready for departure." : $"Trip is {readiness.Status}; departure is blocked.",
+                readiness.Blockers.Select(blocker => new ApiError { Field = "blockers", Reason = "TRIP_DEPARTURE_BLOCKED", Message = blocker }).ToList(),
+                GetRequestId(context)));
         var result = await service.RecordTripDepartureAsync(tripId, request.Latitude, request.Longitude, actorUserId, cancellationToken);
         return Results.Ok(ApiResponse<TripExecutionDto>.Success(result, "Trip departure recorded.", GetRequestId(context)));
     }

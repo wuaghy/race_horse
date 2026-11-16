@@ -10,7 +10,8 @@ public static class GpsTrackingEndpoints
     {
         var gps = app.MapGroup("/api/v1/trips/{tripId:guid}/gps")
             .WithTags("GPS Tracking")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCustomerTripOwnership();
 
         gps.MapPost("/points", IngestGpsPoint)
             .RequireAuthorization("TrackingUpdate")
@@ -39,7 +40,8 @@ public static class GpsTrackingEndpoints
 
         var eta = app.MapGroup("/api/v1/trips/{tripId:guid}/eta")
             .WithTags("ETA Tracking")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireCustomerTripOwnership();
 
         eta.MapPost("/calculate", CalculateEta)
             .RequireAuthorization("TrackingUpdate")

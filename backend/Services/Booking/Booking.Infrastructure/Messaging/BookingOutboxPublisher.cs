@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Data;
 using System.Text;
 using Booking.Infrastructure.Messaging;
@@ -48,6 +49,13 @@ public sealed class BookingOutboxPublisher : BackgroundService
                 using var channel = connection.CreateModel();
                 channel.ExchangeDeclare(ExchangeName, ExchangeType.Topic, durable: true, autoDelete: false);
                 channel.ConfirmSelect();
+                var unroutableMessages = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+                channel.BasicReturn += (_, args) =>
+                {
+                    var messageId = args.BasicProperties.MessageId;
+                    if (!string.IsNullOrWhiteSpace(messageId))
+                        unroutableMessages[messageId] = args.ReplyText;
+                };
 
                 foreach (var message in messages)
                 {
@@ -65,6 +73,8 @@ public sealed class BookingOutboxPublisher : BackgroundService
                             basicProperties: properties,
                             body: Encoding.UTF8.GetBytes(message.Payload));
                         channel.WaitForConfirmsOrDie(TimeSpan.FromSeconds(5));
+                        if (unroutableMessages.TryRemove(message.Id.ToString(), out var returnReason))
+                            throw new InvalidOperationException($"RabbitMQ could not route outbox event {message.Id}: {returnReason}");
                         await MarkPublishedAsync(message.Id, stoppingToken);
                     }
                     catch (Exception exception) when (!stoppingToken.IsCancellationRequested)

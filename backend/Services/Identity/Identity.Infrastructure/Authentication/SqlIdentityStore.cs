@@ -34,6 +34,25 @@ public sealed class SqlIdentityStore : IIdentityStore
         return accounts;
     }
 
+    public async Task<IReadOnlyList<StaffDisplayName>> GetStaffDisplayNamesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0) return [];
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        var parameters = userIds.Select((_, index) => $"@UserId{index}").ToArray();
+        await using var command = new SqlCommand(
+            "SELECT u.Id, u.FullName FROM dbo.Users u INNER JOIN dbo.Roles r ON r.Id = u.RoleId " +
+            $"WHERE r.Code <> 'CUSTOMER' AND u.Id IN ({string.Join(",", parameters)});", connection);
+        var index = 0;
+        foreach (var userId in userIds)
+            command.Parameters.Add(parameters[index++], SqlDbType.UniqueIdentifier).Value = userId;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var names = new List<StaffDisplayName>();
+        while (await reader.ReadAsync(cancellationToken))
+            names.Add(new StaffDisplayName(reader.GetGuid(0), reader.GetString(1)));
+        return names;
+    }
+
     public async Task<AuthUser?> FindByEmailAsync(string email, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(_connectionString);

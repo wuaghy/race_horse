@@ -7,7 +7,10 @@ public static class PlanningGrpcEndpoints
 {
     public static void MapPlanningGrpcEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/v1/trips/{tripId:guid}/planning-summary", async (
+        var customerTripGroup = app.MapGroup("/api/v1/trips/{tripId:guid}")
+            .RequireCustomerTripOwnership();
+
+        customerTripGroup.MapGet("/planning-summary", async (
             Guid tripId,
             PlanningGrpcClient planning,
             HttpContext context,
@@ -26,7 +29,7 @@ public static class PlanningGrpcEndpoints
             {
                 tripId = Guid.Parse(result.TripId),
                 result.TripNo,
-                orderId = Guid.Parse(result.OrderId),
+                orderId = Guid.TryParse(result.OrderId, out var orderId) ? orderId : (Guid?)null,
                 result.Status,
                 result.ComplianceReady,
                 plannedDepartureAt = ParseDate(result.PlannedDepartureAt),

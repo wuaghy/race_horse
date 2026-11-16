@@ -7,6 +7,7 @@ public interface ITripExecutionService
 {
     Task<TripExecutionDto> InitiateTripExecutionAsync(InitiateTripExecutionInput input, CancellationToken cancellationToken);
     Task<TripExecutionDto?> GetTripExecutionAsync(Guid tripId, CancellationToken cancellationToken);
+    Task<PagedTrackingResult<TripExecutionDto>> GetTripExecutionsAsync(int page, int pageSize, string? search, string? status, string? sortDirection, CancellationToken cancellationToken, IReadOnlyCollection<Guid>? allowedTripIds = null);
     Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, Guid actorUserId, CancellationToken cancellationToken);
     Task<TripExecutionDto> RecordTripArrivalAsync(Guid tripId, decimal latitude, decimal longitude, CancellationToken cancellationToken);
     Task<TripExecutionDto> UpdateTripLocationAsync(Guid tripId, UpdateTripLocationInput input, CancellationToken cancellationToken);
@@ -50,6 +51,12 @@ public class TripExecutionService : ITripExecutionService
     {
         var trip = await _tripRepository.GetByTripIdAsync(tripId, cancellationToken);
         return trip == null ? null : MapToDto(trip);
+    }
+
+    public async Task<PagedTrackingResult<TripExecutionDto>> GetTripExecutionsAsync(int page, int pageSize, string? search, string? status, string? sortDirection, CancellationToken cancellationToken, IReadOnlyCollection<Guid>? allowedTripIds = null)
+    {
+        var result = await _tripRepository.ListAsync(page, pageSize, search, status, sortDirection, cancellationToken, allowedTripIds);
+        return new PagedTrackingResult<TripExecutionDto>(result.Items.Select(MapToDto).ToList(), result.Page, result.PageSize, result.TotalItems);
     }
 
     public async Task<TripExecutionDto> RecordTripDepartureAsync(Guid tripId, decimal latitude, decimal longitude, Guid actorUserId, CancellationToken cancellationToken)
@@ -335,6 +342,7 @@ public interface ITripExecutionRepository
     Task AddAsync(TripExecution trip, CancellationToken cancellationToken);
     Task UpdateAsync(TripExecution trip, CancellationToken cancellationToken);
     Task<TripExecution?> GetByTripIdAsync(Guid tripId, CancellationToken cancellationToken);
+    Task<PagedTrackingResult<TripExecution>> ListAsync(int page, int pageSize, string? search, string? status, string? sortDirection, CancellationToken cancellationToken, IReadOnlyCollection<Guid>? allowedTripIds = null);
 }
 
 public interface ICheckpointEventRepository
