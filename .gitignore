@@ -71,3 +71,9 @@ SWAGGER_TESTING.md
 DOCKER_DEPLOYMENT.md
 start-docker.sh
 start-docker.bat
+
+# Temporary office files & local scratch
+~$*
+.scratch/
+graphify-out/
+*.zip
