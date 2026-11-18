@@ -2,6 +2,7 @@ using System.Text.Json;
 using BuildingBlocks.Api;
 using BuildingBlocks.Exceptions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Planning.Application.Abstractions;
 using Planning.Application.DTOs.Planning;
 using Planning.Application.DTOs.Readiness;
@@ -9,7 +10,10 @@ using Planning.Domain;
 
 namespace Planning.Application.Services;
 
-public class TripReadinessService(IPlanningDbContext db) : ITripReadinessService
+public class TripReadinessService(
+    IPlanningDbContext db,
+    IComplianceVerificationClient? complianceClient = null,
+    ILogger<TripReadinessService>? logger = null) : ITripReadinessService
 {
     public async Task<TripDto> SetComplianceReadyAsync(Guid tripId, CancellationToken ct = default)
     {
@@ -106,10 +110,52 @@ public class TripReadinessService(IPlanningDbContext db) : ITripReadinessService
             blockers.Add($"Horse {h.HorseId} chưa có stall");
         }
 
-        // 5. Compliance check
-        if (!trip.ComplianceReady)
+        // 5. Compliance check (gRPC pre-flight verification with graceful degradation)
+        var verifiedViaGrpc = false;
+        if (complianceClient != null)
         {
-            blockers.Add("Compliance chưa ready");
+            try
+            {
+                var complianceResult = await complianceClient.VerifyTripComplianceAsync(tripId, ct);
+                verifiedViaGrpc = true;
+
+                if (complianceResult.IsCompliant)
+                {
+                    if (!trip.ComplianceReady)
+                    {
+                        var trackedTrip = await db.TransportTrips.FirstOrDefaultAsync(t => t.Id == tripId, ct);
+                        if (trackedTrip != null)
+                        {
+                            trackedTrip.ComplianceReady = true;
+                            trackedTrip.UpdatedAt = DateTime.UtcNow;
+                            await db.SaveChangesAsync(ct);
+                        }
+                    }
+                }
+                else
+                {
+                    if (complianceResult.BlockerMessages.Count > 0)
+                    {
+                        blockers.AddRange(complianceResult.BlockerMessages);
+                    }
+                    else
+                    {
+                        blockers.Add("Compliance chưa ready");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "gRPC compliance verification failed for TripId {TripId}. Falling back to cached local state.", tripId);
+            }
+        }
+
+        if (!verifiedViaGrpc)
+        {
+            if (!trip.ComplianceReady)
+            {
+                blockers.Add("Compliance chưa ready");
+            }
         }
 
         return new TripReadinessResponse(tripId, blockers.Count == 0, blockers);

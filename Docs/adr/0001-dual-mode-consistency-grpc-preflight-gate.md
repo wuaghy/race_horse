@@ -1,0 +1,3 @@
+# 1. Dual-Mode Consistency for Pre-Departure Compliance Verification
+
+To prevent cross-border transport of racehorses with expired or invalid quarantine certificates while preserving loose coupling and event-driven architecture, we decided to adopt a Dual-Mode Consistency pattern. Asynchronous state updates continue to propagate via RabbitMQ events (`Compliance.ComplianceReady`), while a synchronous HTTP/2 gRPC Pre-Flight Gate (`VerifyTripCompliance`) is executed on-demand by Planning Service during trip readiness evaluation (`PLANNED -> READY`), with graceful degradation falling back to local cached state if Compliance Service is temporarily unreachable.

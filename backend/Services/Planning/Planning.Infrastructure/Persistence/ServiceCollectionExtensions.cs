@@ -1,8 +1,10 @@
+using Compliance.Grpc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Planning.Application.Abstractions;
 using Planning.Application.Services;
+using Planning.Infrastructure.Clients;
 using Planning.Infrastructure.Messaging;
 
 namespace Planning.Infrastructure.Persistence;
@@ -30,6 +32,23 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMessageBus, RabbitMqMessageBus>();
         services.AddHostedService<OutboxDispatcherBackgroundService>();
         services.AddHostedService<RabbitMqEventConsumerService>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddPlanningGrpcClients(this IServiceCollection services, IConfiguration config)
+    {
+        var complianceUrl = config["GrpcServices:ComplianceUrl"]
+            ?? config["ComplianceService:GrpcUrl"]
+            ?? config["COMPLIANCE_GRPC_URL"]
+            ?? "http://compliance:8083";
+
+        services.AddGrpcClient<ComplianceRpc.ComplianceRpcClient>(o =>
+        {
+            o.Address = new Uri(complianceUrl);
+        });
+
+        services.AddScoped<IComplianceVerificationClient, ComplianceGrpcClient>();
 
         return services;
     }

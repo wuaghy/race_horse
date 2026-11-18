@@ -2,13 +2,25 @@ using System.Text;
 using BuildingBlocks.Api;
 using BuildingBlocks.Middleware;
 using Compliance.Api.Endpoints;
+using Compliance.Api.Services;
 using Compliance.Infrastructure;
 using Compliance.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel for cleartext HTTP/1.1 and HTTP/2 (h2c) on port 8083
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(8083, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+    });
+});
+
+builder.Services.AddGrpc();
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -96,6 +108,7 @@ app.MapComplianceMasterDataEndpoints();
 app.MapDocumentEndpoints();
 app.MapClearanceEndpoints();
 app.MapReadinessEndpoints();
+app.MapGrpcService<ComplianceRpcService>();
 
 // Initialize database & seed defaults
 await DatabaseInitializer.InitializeDatabaseAsync(app.Services, app.Logger);

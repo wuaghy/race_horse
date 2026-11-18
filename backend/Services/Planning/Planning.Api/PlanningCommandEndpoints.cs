@@ -1,5 +1,6 @@
 using BuildingBlocks.Api;
 using System.Security.Claims;
+using Planning.Application.Abstractions;
 using Planning.Application.DTOs.Planning;
 using Planning.Application.DTOs.Readiness;
 using Planning.Application.Services;
@@ -144,6 +145,45 @@ public static class PlanningCommandEndpoints
             var actorId = GetActorId(user);
             if (actorId is null) return Results.Unauthorized();
             return Results.Ok(ApiResponse<TripDto>.Success(await svc.ConfirmReadyAsync(id, actorId.Value, ct), "Trip confirmed READY for departure"));
+        });
+
+        // ==========================================
+        // Live gRPC Compliance Verification (SPEC-001)
+        // ==========================================
+        api.MapGet("/trips/{id:guid}/compliance-verification", async (
+            Guid id,
+            IComplianceVerificationClient client,
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
+        {
+            var logger = loggerFactory.CreateLogger("Planning.Api.ComplianceVerification");
+            logger.LogInformation("REST /trips/{TripId}/compliance-verification requested. Invoking live gRPC pre-flight gate.", id);
+
+            var verification = await client.VerifyTripComplianceAsync(id, ct);
+
+            logger.LogInformation("gRPC verification completed for Trip {TripId}: IsCompliant={IsCompliant}, Met={Met}/{Total}, Blockers={BlockerCount}",
+                id, verification.IsCompliant, verification.TotalMet, verification.TotalRequired, verification.BlockerMessages.Count);
+
+            return Results.Ok(ApiResponse<TripComplianceVerificationDto>.Success(verification, "Live gRPC compliance verification completed successfully"));
+        })
+        .WithName("VerifyTripCompliance")
+        .WithSummary("Executes a live gRPC point-in-time regulatory compliance check for the specified trip.");
+
+        api.MapGet("/planning/trips/{id:guid}/compliance-verification", async (
+            Guid id,
+            IComplianceVerificationClient client,
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
+        {
+            var logger = loggerFactory.CreateLogger("Planning.Api.ComplianceVerification");
+            logger.LogInformation("REST /planning/trips/{TripId}/compliance-verification requested. Invoking live gRPC pre-flight gate.", id);
+
+            var verification = await client.VerifyTripComplianceAsync(id, ct);
+
+            logger.LogInformation("gRPC verification completed for Trip {TripId}: IsCompliant={IsCompliant}, Met={Met}/{Total}, Blockers={BlockerCount}",
+                id, verification.IsCompliant, verification.TotalMet, verification.TotalRequired, verification.BlockerMessages.Count);
+
+            return Results.Ok(ApiResponse<TripComplianceVerificationDto>.Success(verification, "Live gRPC compliance verification completed successfully"));
         });
 
         return api;

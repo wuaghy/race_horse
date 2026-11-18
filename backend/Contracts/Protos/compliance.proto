@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package racehorse.compliance;
+
+option csharp_namespace = "Compliance.Grpc";
+
+service ComplianceRpc {
+  rpc VerifyTripCompliance (VerifyTripComplianceRequest) returns (VerifyTripComplianceResponse);
+}
+
+message VerifyTripComplianceRequest {
+  string trip_id = 1;
+  string origin_country_id = 2;
+  string destination_country_id = 3;
+  repeated string horse_ids = 4;
+  string planned_departure_date = 5; // ISO 8601 (YYYY-MM-DD)
+}
+
+message ComplianceCheckItemModel {
+  string document_type_code = 1;
+  string document_type_name = 2;
+  string scope = 3; // HORSE, TRIP, REQUEST
+  string target_id = 4;
+  string status = 5; // VALID, MISSING, EXPIRED, UNDER_REVIEW
+  bool is_met = 6;
+  string details = 7;
+}
+
+message VerifyTripComplianceResponse {
+  string trip_id = 1;
+  bool is_compliant = 2;
+  int32 total_required = 3;
+  int32 total_met = 4;
+  int32 total_missing = 5;
+  int32 total_expired = 6;
+  repeated string blocker_messages = 7;
+  repeated ComplianceCheckItemModel check_items = 8;
+  string evaluated_at = 9;
+}

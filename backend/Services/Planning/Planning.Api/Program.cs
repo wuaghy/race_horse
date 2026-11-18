@@ -63,6 +63,9 @@ else
 // RabbitMQ messaging, Outbox Dispatcher & Event Consumers
 builder.Services.AddPlanningMessaging(builder.Configuration);
 
+// gRPC Clients (SPEC-001)
+builder.Services.AddPlanningGrpcClients(builder.Configuration);
+
 var app = builder.Build();
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
