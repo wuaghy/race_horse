@@ -41,7 +41,7 @@ public static class ServiceCollectionExtensions
         var complianceUrl = config["GrpcServices:ComplianceUrl"]
             ?? config["ComplianceService:GrpcUrl"]
             ?? config["COMPLIANCE_GRPC_URL"]
-            ?? "http://compliance:8083";
+            ?? "http://compliance:5083";
 
         services.AddGrpcClient<ComplianceRpc.ComplianceRpcClient>(o =>
         {

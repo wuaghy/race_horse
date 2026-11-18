@@ -96,7 +96,7 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      ASPNETCORE_HTTP_PORTS: "8083"
+      ASPNETCORE_HTTP_PORTS: ""
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__ComplianceDb: "Server=sqlserver,1433;Database=ComplianceDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-YourStrong@Password2026!};Encrypt=True;TrustServerCertificate=True"
       Jwt__SigningKey: "${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random value of at least 32 bytes}"
@@ -108,6 +108,7 @@ services:
       Storage__LocalDirectory: /app/App_Data/compliance-files
     ports:
       - "${COMPLIANCE_PORT:-8083}:8083"
+      - "5083:5083"
     volumes:
       - compliance_files:/app/App_Data/compliance-files
     networks:
@@ -136,7 +137,7 @@ services:
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
       RabbitMQ__ExchangeName: racehorse.events
-      GrpcServices__ComplianceUrl: "http://compliance:8083"
+      GrpcServices__ComplianceUrl: "http://compliance:5083"
     networks:
       - racehorse_net
 
