@@ -10,6 +10,7 @@ using Planning.Application.Services;
 using Planning.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddOpenApi();
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "racehorse-identity";

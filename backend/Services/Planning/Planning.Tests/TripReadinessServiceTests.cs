@@ -278,6 +278,56 @@ public class TripReadinessServiceTests
         Assert.DoesNotContain("Compliance chưa ready", result2.Blockers);
     }
 
+    [Fact]
+    public async Task VerifyTripCompliance_WhenTripHasNoActiveRouteOrHorses_FastRejectsLocallyWithoutCallingGrpcClient()
+    {
+        using var db = TestDbContextFactory.Create();
+        var planningSvc = new TripPlanningService(db);
+        var trip = await planningSvc.CreateTripAsync(new CreateTripInput(Guid.NewGuid()));
+
+        var fakeClient = new FakeComplianceClient();
+        var readinessSvc = new TripReadinessService(db, fakeClient);
+
+        var verification = await readinessSvc.VerifyTripComplianceAsync(trip.Id);
+
+        Assert.False(verification.IsCompliant);
+        Assert.Equal(0, fakeClient.CallCount); // Proves no gRPC call dispatched with blank GUIDs (SPEC-002 L21)
+        Assert.Contains(verification.BlockerMessages, b => b.Contains("no active route plan"));
+        Assert.Contains(verification.BlockerMessages, b => b.Contains("no horses assigned"));
+    }
+
+    [Fact]
+    public async Task VerifyTripCompliance_WhenTripHasValidRouteAndHorses_DispatchesToGrpcClient()
+    {
+        using var db = TestDbContextFactory.Create();
+        var planningSvc = new TripPlanningService(db);
+        var (trip, locA, locB, _) = await SetupValidTripAndRouteAsync(planningSvc, db);
+
+        var expectedResult = new TripComplianceVerificationDto(
+            trip.Id,
+            true,
+            5,
+            5,
+            0,
+            0,
+            new List<string>(),
+            new List<ComplianceCheckItemDto>(),
+            DateTime.UtcNow
+        );
+        var fakeClient = new FakeComplianceClient { Result = expectedResult };
+        var readinessSvc = new TripReadinessService(db, fakeClient);
+
+        var verification = await readinessSvc.VerifyTripComplianceAsync(trip.Id);
+
+        Assert.True(verification.IsCompliant);
+        Assert.Equal(1, fakeClient.CallCount);
+        Assert.NotNull(fakeClient.LastQuery);
+        Assert.Equal(trip.Id, fakeClient.LastQuery.TripId);
+        Assert.Equal(locA.CountryId, fakeClient.LastQuery.OriginCountryId);
+        Assert.Equal(locB.CountryId, fakeClient.LastQuery.DestinationCountryId);
+        Assert.NotEmpty(fakeClient.LastQuery.HorseIds);
+    }
+
     private static async Task<(TransportTrip Trip, Location LocA, Location LocB, Vehicle Vehicle)> SetupValidTripAndRouteAsync(TripPlanningService planningSvc, PlanningDbContext db)
     {
         var country = new Country { IsoCode = "VN", Name = "Vietnam", Active = true };

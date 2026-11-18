@@ -1,5 +1,6 @@
 using Compliance.Grpc;
 using Grpc.Core;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Planning.Application.Abstractions;
 using Planning.Application.DTOs.Readiness;
@@ -9,22 +10,29 @@ namespace Planning.Infrastructure.Clients;
 public class ComplianceGrpcClient : IComplianceVerificationClient
 {
     private readonly ComplianceRpc.ComplianceRpcClient _client;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly ILogger<ComplianceGrpcClient> _logger;
 
     public ComplianceGrpcClient(
         ComplianceRpc.ComplianceRpcClient client,
-        ILogger<ComplianceGrpcClient> logger)
+        ILogger<ComplianceGrpcClient> logger,
+        IHttpContextAccessor? httpContextAccessor = null)
     {
         _client = client;
         _logger = logger;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<TripComplianceVerificationDto> VerifyTripComplianceAsync(
         ComplianceTripQuery query,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Dispatching gRPC VerifyTripCompliance request for TripId {TripId} (Origin: {Origin}, Destination: {Dest}, Horses: {Count})",
-            query.TripId, query.OriginCountryId, query.DestinationCountryId, query.HorseIds.Count);
+        var correlationId = _httpContextAccessor?.HttpContext?.Items["X-Correlation-ID"]?.ToString()
+            ?? _httpContextAccessor?.HttpContext?.Request.Headers["X-Correlation-ID"].ToString()
+            ?? Guid.NewGuid().ToString();
+
+        _logger.LogInformation("[{CorrelationId}] Dispatching gRPC VerifyTripCompliance request for TripId {TripId} (Origin: {Origin}, Destination: {Dest}, Horses: {Count})",
+            correlationId, query.TripId, query.OriginCountryId, query.DestinationCountryId, query.HorseIds.Count);
 
         var request = new VerifyTripComplianceRequest
         {
@@ -39,7 +47,13 @@ public class ComplianceGrpcClient : IComplianceVerificationClient
             request.HorseIds.Add(horseId.ToString());
         }
 
+        var headers = new Metadata
+        {
+            { "x-correlation-id", correlationId }
+        };
+
         var callOptions = new CallOptions(
+            headers: headers,
             deadline: DateTime.UtcNow.AddSeconds(5),
             cancellationToken: cancellationToken
         );

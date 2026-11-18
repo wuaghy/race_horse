@@ -10,6 +10,7 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddGrpc();
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();

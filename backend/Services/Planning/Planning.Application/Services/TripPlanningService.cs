@@ -87,6 +87,7 @@ public class TripPlanningService(IPlanningDbContext db) : ITripPlanningService
         };
 
         db.RoutePlans.Add(plan);
+        await db.SaveChangesAsync(ct);
 
         var version = new RoutePlanVersion
         {

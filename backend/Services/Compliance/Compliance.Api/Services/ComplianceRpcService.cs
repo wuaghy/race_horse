@@ -21,8 +21,10 @@ public class ComplianceRpcService : ComplianceRpc.ComplianceRpcBase
         VerifyTripComplianceRequest request,
         ServerCallContext context)
     {
-        _logger.LogInformation("gRPC VerifyTripCompliance invoked for TripId={TripId}, Origin={Origin}, Destination={Dest}, Horses={HorseCount}",
-            request.TripId, request.OriginCountryId, request.DestinationCountryId, request.HorseIds.Count);
+        var correlationId = context?.RequestHeaders?.GetValue("x-correlation-id") ?? Guid.NewGuid().ToString();
+
+        _logger.LogInformation("[{CorrelationId}] gRPC VerifyTripCompliance invoked for TripId={TripId}, Origin={Origin}, Destination={Dest}, Horses={HorseCount}",
+            correlationId, request.TripId, request.OriginCountryId, request.DestinationCountryId, request.HorseIds.Count);
 
         _ = Guid.TryParse(request.TripId, out var tripId);
         _ = Guid.TryParse(request.OriginCountryId, out var originCountryId);

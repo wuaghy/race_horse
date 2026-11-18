@@ -152,20 +152,10 @@ public static class PlanningCommandEndpoints
         // ==========================================
         api.MapGet("/trips/{id:guid}/compliance-verification", async (
             Guid id,
-            IComplianceVerificationClient client,
             ITripReadinessService readinessService,
-            ILoggerFactory loggerFactory,
             CancellationToken ct) =>
         {
-            var logger = loggerFactory.CreateLogger("Planning.Api.ComplianceVerification");
-            logger.LogInformation("REST /trips/{TripId}/compliance-verification requested. Invoking live gRPC pre-flight gate.", id);
-
-            var query = await readinessService.BuildComplianceQueryAsync(id, ct);
-            var verification = await client.VerifyTripComplianceAsync(query, ct);
-
-            logger.LogInformation("gRPC verification completed for Trip {TripId}: IsCompliant={IsCompliant}, Met={Met}/{Total}, Blockers={BlockerCount}",
-                id, verification.IsCompliant, verification.TotalMet, verification.TotalRequired, verification.BlockerMessages.Count);
-
+            var verification = await readinessService.VerifyTripComplianceAsync(id, ct);
             return Results.Ok(ApiResponse<TripComplianceVerificationDto>.Success(verification, "Live gRPC compliance verification completed successfully"));
         })
         .WithName("VerifyTripCompliance")

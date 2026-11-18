@@ -116,6 +116,7 @@ public sealed class PlanningDbContext(DbContextOptions<PlanningDbContext> option
             e.ToTable("RoutePlans");
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.TripId).IsUnique();
+            e.HasOne<TransportTrip>().WithMany().HasForeignKey(x => x.TripId);
         });
 
         b.Entity<RoutePlanVersion>(e =>
@@ -123,6 +124,7 @@ public sealed class PlanningDbContext(DbContextOptions<PlanningDbContext> option
             e.ToTable("RoutePlanVersions");
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.RoutePlanId, x.VersionNo }).IsUnique();
+            e.HasOne<RoutePlan>().WithMany().HasForeignKey(x => x.RoutePlanId);
             e.Property(x => x.Status).HasMaxLength(40);
             e.Property(x => x.TotalDistanceKm).HasPrecision(12, 2);
             e.Property(x => x.AdditionalCost).HasPrecision(18, 2);
@@ -135,6 +137,7 @@ public sealed class PlanningDbContext(DbContextOptions<PlanningDbContext> option
             e.ToTable("RouteLegs");
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.RoutePlanVersionId, x.SequenceNo }).IsUnique();
+            e.HasOne<RoutePlanVersion>().WithMany().HasForeignKey(x => x.RoutePlanVersionId);
             e.Property(x => x.TransportMode).HasMaxLength(30);
             e.Property(x => x.Status).HasMaxLength(40);
             e.Property(x => x.DistanceKm).HasPrecision(12, 2);
@@ -191,6 +194,7 @@ public sealed class PlanningDbContext(DbContextOptions<PlanningDbContext> option
             e.Property(x => x.OldState).HasMaxLength(50);
             e.Property(x => x.NewState).HasMaxLength(50);
             e.Property(x => x.Reason).HasMaxLength(2000);
+            e.Property(x => x.Payload);
             e.HasIndex(x => new { x.EntityType, x.EntityId });
         });
     }

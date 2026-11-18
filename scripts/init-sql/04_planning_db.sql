@@ -292,6 +292,7 @@ CREATE TABLE AuditLogs (
     NewState        VARCHAR(50)      NULL,
     ActorUserId     UNIQUEIDENTIFIER NOT NULL,
     Reason          NVARCHAR(2000)   NULL,
+    Payload         NVARCHAR(MAX)    NULL,
     CorrelationId   UNIQUEIDENTIFIER NULL,
     OccurredAt      DATETIME2(3)     NOT NULL,
     CreatedAt       DATETIME2(3)     NOT NULL DEFAULT SYSUTCDATETIME(),

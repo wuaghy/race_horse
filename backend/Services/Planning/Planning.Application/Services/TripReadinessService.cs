@@ -13,7 +13,8 @@ namespace Planning.Application.Services;
 public class TripReadinessService(
     IPlanningDbContext db,
     IComplianceVerificationClient? complianceClient = null,
-    ILogger<TripReadinessService>? logger = null) : ITripReadinessService
+    ILogger<TripReadinessService>? logger = null,
+    Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor = null) : ITripReadinessService
 {
     public async Task<TripDto> SetComplianceReadyAsync(Guid tripId, CancellationToken ct = default)
     {
@@ -67,6 +68,42 @@ public class TripReadinessService(
             : null;
 
         return new ComplianceTripQuery(tripId, originCountryId, destinationCountryId, horseIds, departureDate);
+    }
+
+    public async Task<TripComplianceVerificationDto> VerifyTripComplianceAsync(Guid tripId, CancellationToken ct = default)
+    {
+        var trip = await db.TransportTrips.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tripId, ct)
+            ?? throw new NotFoundException("Trip", tripId);
+
+        var query = await BuildComplianceQueryAsync(tripId, ct);
+
+        // Fast-reject locally if trip lacks active route or assigned horses without dispatching blank GUIDs over gRPC wire (SPEC-002 L21)
+        var localBlockers = new List<string>();
+        if (query.OriginCountryId == Guid.Empty || query.DestinationCountryId == Guid.Empty)
+        {
+            localBlockers.Add("Trip has no active route plan or undefined route origin/destination.");
+        }
+        if (query.HorseIds.Count == 0)
+        {
+            localBlockers.Add("Trip has no horses assigned.");
+        }
+
+        if (localBlockers.Count > 0 || complianceClient == null)
+        {
+            return new TripComplianceVerificationDto(
+                tripId,
+                IsCompliant: false,
+                TotalRequired: 0,
+                TotalMet: 0,
+                TotalMissing: 0,
+                TotalExpired: 0,
+                BlockerMessages: localBlockers,
+                CheckItems: Array.Empty<ComplianceCheckItemDto>(),
+                EvaluatedAt: DateTime.UtcNow
+            );
+        }
+
+        return await complianceClient.VerifyTripComplianceAsync(query, ct);
     }
 
     public async Task<TripReadinessResponse> EvaluateReadinessAsync(Guid tripId, CancellationToken ct = default)
@@ -154,25 +191,10 @@ public class TripReadinessService(
 
         if (activeVersion != null && legs.Count > 0 && horseAssignments.Count > 0)
         {
-            var originLocId = legs[0].OriginLocationId;
-            var destLocId = legs[^1].DestinationLocationId;
+            var query = await BuildComplianceQueryAsync(tripId, ct);
 
-            var locIds = new[] { originLocId, destLocId };
-            var locs = await db.Locations.AsNoTracking()
-                .Where(l => locIds.Contains(l.Id))
-                .ToListAsync(ct);
-
-            var originCountryId = locs.FirstOrDefault(l => l.Id == originLocId)?.CountryId ?? Guid.Empty;
-            var destCountryId = locs.FirstOrDefault(l => l.Id == destLocId)?.CountryId ?? Guid.Empty;
-            var horseIds = horseAssignments.Select(h => h.HorseId).Distinct().ToList();
-
-            DateOnly? departureDate = trip.PlannedDepartureAt.HasValue
-                ? DateOnly.FromDateTime(trip.PlannedDepartureAt.Value)
-                : null;
-
-            if (originCountryId != Guid.Empty && destCountryId != Guid.Empty && horseIds.Count > 0)
+            if (query.OriginCountryId != Guid.Empty && query.DestinationCountryId != Guid.Empty && query.HorseIds.Count > 0)
             {
-                var query = new ComplianceTripQuery(tripId, originCountryId, destCountryId, horseIds, departureDate);
                 bool verifiedViaGrpc = false;
 
                 if (complianceClient != null)
@@ -289,6 +311,10 @@ public class TripReadinessService(
             summary = complianceSummary
         });
 
+        var correlationId = Guid.TryParse(httpContextAccessor?.HttpContext?.Items["X-Correlation-ID"]?.ToString(), out var parsedCid)
+            ? parsedCid
+            : Guid.NewGuid();
+
         db.AuditLogs.Add(new AuditLog
         {
             EntityType = "TransportTrip",
@@ -299,7 +325,7 @@ public class TripReadinessService(
             ActorUserId = actorUserId,
             Reason = complianceSummary,
             Payload = auditPayload,
-            CorrelationId = Guid.NewGuid(),
+            CorrelationId = correlationId,
             OccurredAt = DateTime.UtcNow
         });
 
@@ -318,7 +344,7 @@ public class TripReadinessService(
             AggregateType = "TransportTrip",
             AggregateId = trip.Id,
             Payload = payload,
-            CorrelationId = Guid.NewGuid(),
+            CorrelationId = correlationId,
             OccurredAt = DateTime.UtcNow,
             Status = "PENDING"
         });
