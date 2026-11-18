@@ -5,6 +5,7 @@ using Planning.Application.DTOs.Planning;
 using Planning.Application.DTOs.Readiness;
 using Planning.Application.Services;
 using Planning.Domain;
+using Planning.Infrastructure.Persistence;
 using Xunit;
 
 namespace Planning.Tests;
@@ -55,41 +56,7 @@ public class TripReadinessServiceTests
         var planningSvc = new TripPlanningService(db);
         var readinessSvc = new TripReadinessService(db);
 
-        // 1. Setup master data
-        var country = new Country { IsoCode = "VN", Name = "Vietnam", Active = true };
-        var vehicle = new Vehicle { VehicleCode = "V01", PlateNumber = "51H-12345", VehicleType = "TRUCK", HorseCapacity = 4, StallCapacity = 4, Status = "AVAILABLE" };
-        var stall = new Stall { StallCode = "S01", Capacity = 2, Active = true };
-        db.Countries.Add(country);
-        db.Vehicles.Add(vehicle);
-        db.Stalls.Add(stall);
-        await db.SaveChangesAsync();
-
-        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id };
-        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id };
-        db.Locations.AddRange(locA, locB);
-        await db.SaveChangesAsync();
-
-        // 2. Setup trip and plan
-        var trip = await planningSvc.CreateTripAsync(new CreateTripInput(Guid.NewGuid()));
-        var plan = await planningSvc.CreateRoutePlanAsync(trip.Id, Guid.NewGuid());
-        var version = (await planningSvc.GetVersionsAsync(plan.Id)).Single();
-
-        var now = DateTime.UtcNow.AddDays(1);
-        var leg = await planningSvc.AddLegAsync(version.Id, new RouteLegInput(1, locA.Id, locB.Id, "ROAD", now, now.AddHours(3)));
-
-        // 3. Assign Vehicle to leg
-        await planningSvc.AssignResourceAsync(leg.Id, new ResourceInput(vehicle.Id, null));
-
-        // 4. Assign ESCORT staff to trip
-        await planningSvc.AssignStaffAsync(trip.Id, new StaffInput(leg.Id, Guid.NewGuid(), PlanningConstants.StaffRole.Escort));
-
-        // 5. Assign horse with stall
-        await planningSvc.AssignHorseAsync(trip.Id, new HorseInput(Guid.NewGuid(), leg.Id, stall.Id));
-
-        // 6. Submit, approve, activate route
-        await planningSvc.SubmitRouteVersionAsync(version.Id, Guid.NewGuid());
-        await planningSvc.ApproveRouteVersionAsync(version.Id, Guid.NewGuid());
-        await planningSvc.ActivateRouteVersionAsync(version.Id, Guid.NewGuid());
+        var (trip, _, _, _) = await SetupValidTripAndRouteAsync(planningSvc, db);
 
         // Still blocked on compliance
         var preCheck = await readinessSvc.EvaluateReadinessAsync(trip.Id);
@@ -97,16 +64,16 @@ public class TripReadinessServiceTests
         Assert.Single(preCheck.Blockers);
         Assert.Equal("Compliance chưa ready", preCheck.Blockers[0]);
 
-        // 7. Mark compliance ready
+        // Mark compliance ready
         var compReadyTrip = await readinessSvc.SetComplianceReadyAsync(trip.Id);
         Assert.True(compReadyTrip.ComplianceReady);
 
-        // 8. Now readiness must be true
+        // Now readiness must be true
         var finalCheck = await readinessSvc.EvaluateReadinessAsync(trip.Id);
         Assert.True(finalCheck.Ready);
         Assert.Empty(finalCheck.Blockers);
 
-        // 9. Confirm ready command
+        // Confirm ready command
         var actorUserId = Guid.NewGuid();
         var confirmed = await readinessSvc.ConfirmReadyAsync(trip.Id, actorUserId);
 
@@ -130,70 +97,11 @@ public class TripReadinessServiceTests
     }
 
     [Fact]
-    public async Task EvaluateReadiness_WhenGrpcComplianceReturnsBlockers_MergesSpecificBlockers()
+    public async Task EvaluateReadiness_DoesNotMutateDatabase_IsStrictlyReadOnly()
     {
         using var db = TestDbContextFactory.Create();
         var planningSvc = new TripPlanningService(db);
-        var fakeClient = new FakeComplianceClient
-        {
-            Result = new TripComplianceVerificationDto(
-                Guid.NewGuid(),
-                false,
-                2,
-                0,
-                2,
-                0,
-                new List<string> { "Coggins test missing for horse H-01", "Import permit expired" },
-                new List<ComplianceCheckItemDto>(),
-                DateTime.UtcNow
-            )
-        };
-        var readinessSvc = new TripReadinessService(db, fakeClient);
-
-        var trip = await planningSvc.CreateTripAsync(new CreateTripInput(Guid.NewGuid()));
-
-        var result = await readinessSvc.EvaluateReadinessAsync(trip.Id);
-
-        Assert.False(result.Ready);
-        Assert.Contains("Coggins test missing for horse H-01", result.Blockers);
-        Assert.Contains("Import permit expired", result.Blockers);
-    }
-
-    [Fact]
-    public async Task EvaluateReadiness_WhenGrpcComplianceSucceeds_UpdatesLocalStateAndAllowsReady()
-    {
-        using var db = TestDbContextFactory.Create();
-        var planningSvc = new TripPlanningService(db);
-
-        // 1. Setup master data
-        var country = new Country { IsoCode = "VN", Name = "Vietnam", Active = true };
-        var vehicle = new Vehicle { VehicleCode = "V01", PlateNumber = "51H-12345", VehicleType = "TRUCK", HorseCapacity = 4, StallCapacity = 4, Status = "AVAILABLE" };
-        var stall = new Stall { StallCode = "S01", Capacity = 2, Active = true };
-        db.Countries.Add(country);
-        db.Vehicles.Add(vehicle);
-        db.Stalls.Add(stall);
-        await db.SaveChangesAsync();
-
-        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id };
-        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id };
-        db.Locations.AddRange(locA, locB);
-        await db.SaveChangesAsync();
-
-        // 2. Setup trip and plan
-        var trip = await planningSvc.CreateTripAsync(new CreateTripInput(Guid.NewGuid()));
-        var plan = await planningSvc.CreateRoutePlanAsync(trip.Id, Guid.NewGuid());
-        var version = (await planningSvc.GetVersionsAsync(plan.Id)).Single();
-
-        var now = DateTime.UtcNow.AddDays(1);
-        var leg = await planningSvc.AddLegAsync(version.Id, new RouteLegInput(1, locA.Id, locB.Id, "ROAD", now, now.AddHours(3)));
-
-        await planningSvc.AssignResourceAsync(leg.Id, new ResourceInput(vehicle.Id, null));
-        await planningSvc.AssignStaffAsync(trip.Id, new StaffInput(leg.Id, Guid.NewGuid(), PlanningConstants.StaffRole.Escort));
-        await planningSvc.AssignHorseAsync(trip.Id, new HorseInput(Guid.NewGuid(), leg.Id, stall.Id));
-
-        await planningSvc.SubmitRouteVersionAsync(version.Id, Guid.NewGuid());
-        await planningSvc.ApproveRouteVersionAsync(version.Id, Guid.NewGuid());
-        await planningSvc.ActivateRouteVersionAsync(version.Id, Guid.NewGuid());
+        var (trip, _, _, _) = await SetupValidTripAndRouteAsync(planningSvc, db);
 
         var fakeClient = new FakeComplianceClient
         {
@@ -211,13 +119,140 @@ public class TripReadinessServiceTests
         };
         var readinessSvc = new TripReadinessService(db, fakeClient);
 
+        // Before evaluation: ComplianceReady is false in DB
+        var tripBefore = await db.TransportTrips.AsNoTracking().FirstAsync(t => t.Id == trip.Id);
+        Assert.False(tripBefore.ComplianceReady);
+
+        var result = await readinessSvc.EvaluateReadinessAsync(trip.Id);
+        Assert.True(result.Ready);
+
+        // After evaluation: ComplianceReady in DB must remain false (CQRS read-only guarantee)
+        var tripAfter = await db.TransportTrips.AsNoTracking().FirstAsync(t => t.Id == trip.Id);
+        Assert.False(tripAfter.ComplianceReady);
+    }
+
+    [Fact]
+    public async Task EvaluateReadiness_SkipsGrpcCall_WhenRouteLegsOrHorsesMissing()
+    {
+        using var db = TestDbContextFactory.Create();
+        var planningSvc = new TripPlanningService(db);
+        var trip = await planningSvc.CreateTripAsync(new CreateTripInput(Guid.NewGuid()));
+
+        var fakeClient = new FakeComplianceClient();
+        var readinessSvc = new TripReadinessService(db, fakeClient);
+
         var result = await readinessSvc.EvaluateReadinessAsync(trip.Id);
 
-        Assert.True(result.Ready);
-        Assert.Empty(result.Blockers);
+        Assert.False(result.Ready);
+        Assert.Contains("Route version chưa ACTIVE", result.Blockers);
+        // gRPC must NOT be called with empty/unconfigured parameters
+        Assert.Equal(0, fakeClient.CallCount);
+    }
+
+    [Fact]
+    public async Task EvaluateReadiness_WhenGrpcComplianceReturnsBlockers_MergesSpecificBlockers()
+    {
+        using var db = TestDbContextFactory.Create();
+        var planningSvc = new TripPlanningService(db);
+        var (trip, _, _, _) = await SetupValidTripAndRouteAsync(planningSvc, db);
+
+        var fakeClient = new FakeComplianceClient
+        {
+            Result = new TripComplianceVerificationDto(
+                trip.Id,
+                false,
+                2,
+                0,
+                2,
+                0,
+                new List<string> { "Coggins test missing for horse H-01", "Import permit expired" },
+                new List<ComplianceCheckItemDto>(),
+                DateTime.UtcNow
+            )
+        };
+        var readinessSvc = new TripReadinessService(db, fakeClient);
+
+        var result = await readinessSvc.EvaluateReadinessAsync(trip.Id);
+
+        Assert.False(result.Ready);
+        Assert.Contains("Coggins test missing for horse H-01", result.Blockers);
+        Assert.Contains("Import permit expired", result.Blockers);
+        Assert.Equal(1, fakeClient.CallCount);
+    }
+
+    [Fact]
+    public async Task ConfirmReady_WhenGrpcReportsViolation_InvalidatesCachedComplianceReady()
+    {
+        using var db = TestDbContextFactory.Create();
+        var planningSvc = new TripPlanningService(db);
+        var (trip, _, _, _) = await SetupValidTripAndRouteAsync(planningSvc, db);
+
+        // Trip was previously marked ready by an asynchronous event
+        var tempReadinessSvc = new TripReadinessService(db);
+        await tempReadinessSvc.SetComplianceReadyAsync(trip.Id);
+        var tripInitiallyReady = await db.TransportTrips.AsNoTracking().FirstAsync(t => t.Id == trip.Id);
+        Assert.True(tripInitiallyReady.ComplianceReady);
+
+        // Live gRPC reports a regulatory violation (e.g. permit revoked)
+        var fakeClient = new FakeComplianceClient
+        {
+            Result = new TripComplianceVerificationDto(
+                trip.Id,
+                false,
+                1,
+                0,
+                1,
+                0,
+                new List<string> { "Veterinary permit revoked by border authorities" },
+                new List<ComplianceCheckItemDto>(),
+                DateTime.UtcNow
+            )
+        };
+        var readinessSvc = new TripReadinessService(db, fakeClient);
+
+        // ConfirmReadyAsync must throw 422 and invalidate cached ComplianceReady to false
+        var ex = await Assert.ThrowsAsync<AppException>(() =>
+            readinessSvc.ConfirmReadyAsync(trip.Id, Guid.NewGuid()));
+        Assert.Equal(422, ex.StatusCode);
 
         var tripInDb = await db.TransportTrips.FirstAsync(t => t.Id == trip.Id);
-        Assert.True(tripInDb.ComplianceReady);
+        Assert.False(tripInDb.ComplianceReady);
+    }
+
+    [Fact]
+    public async Task ConfirmReady_WhenCompliant_RecordsAuditLogPayloadSnapshot()
+    {
+        using var db = TestDbContextFactory.Create();
+        var planningSvc = new TripPlanningService(db);
+        var (trip, _, _, _) = await SetupValidTripAndRouteAsync(planningSvc, db);
+
+        var fakeClient = new FakeComplianceClient
+        {
+            Result = new TripComplianceVerificationDto(
+                trip.Id,
+                true,
+                3,
+                3,
+                0,
+                0,
+                new List<string>(),
+                new List<ComplianceCheckItemDto>(),
+                DateTime.UtcNow
+            )
+        };
+        var readinessSvc = new TripReadinessService(db, fakeClient);
+        var actorUserId = Guid.NewGuid();
+
+        var confirmed = await readinessSvc.ConfirmReadyAsync(trip.Id, actorUserId);
+        Assert.Equal(PlanningConstants.TripStatus.Ready, confirmed.Status);
+
+        var audit = await db.AuditLogs.FirstOrDefaultAsync(a => a.EntityId == trip.Id && a.Action == "CONFIRM_READY");
+        Assert.NotNull(audit);
+        Assert.NotNull(audit.Payload);
+        Assert.Contains("\"complianceVerified\":true", audit.Payload);
+        Assert.Contains("\"isCompliant\":true", audit.Payload);
+        Assert.Contains("\"totalRequired\":3", audit.Payload);
+        Assert.NotNull(audit.Reason);
     }
 
     [Fact]
@@ -225,7 +260,7 @@ public class TripReadinessServiceTests
     {
         using var db = TestDbContextFactory.Create();
         var planningSvc = new TripPlanningService(db);
-        var trip = await planningSvc.CreateTripAsync(new CreateTripInput(Guid.NewGuid()));
+        var (trip, _, _, _) = await SetupValidTripAndRouteAsync(planningSvc, db);
 
         var fakeClient = new FakeComplianceClient
         {
@@ -243,23 +278,53 @@ public class TripReadinessServiceTests
         Assert.DoesNotContain("Compliance chưa ready", result2.Blockers);
     }
 
+    private static async Task<(TransportTrip Trip, Location LocA, Location LocB, Vehicle Vehicle)> SetupValidTripAndRouteAsync(TripPlanningService planningSvc, PlanningDbContext db)
+    {
+        var country = new Country { IsoCode = "VN", Name = "Vietnam", Active = true };
+        var vehicle = new Vehicle { VehicleCode = "V01", PlateNumber = "51H-12345", VehicleType = "TRUCK", HorseCapacity = 4, StallCapacity = 4, Status = "AVAILABLE" };
+        var stall = new Stall { StallCode = "S01", Capacity = 2, Active = true };
+        db.Countries.Add(country);
+        db.Vehicles.Add(vehicle);
+        db.Stalls.Add(stall);
+        await db.SaveChangesAsync();
+
+        var locA = new Location { Name = "Loc A", LocationType = "STABLE", CountryId = country.Id };
+        var locB = new Location { Name = "Loc B", LocationType = "STABLE", CountryId = country.Id };
+        db.Locations.AddRange(locA, locB);
+        await db.SaveChangesAsync();
+
+        var trip = await planningSvc.CreateTripAsync(new CreateTripInput(Guid.NewGuid()));
+        var plan = await planningSvc.CreateRoutePlanAsync(trip.Id, Guid.NewGuid());
+        var version = (await planningSvc.GetVersionsAsync(plan.Id)).Single();
+
+        var now = DateTime.UtcNow.AddDays(1);
+        var leg = await planningSvc.AddLegAsync(version.Id, new RouteLegInput(1, locA.Id, locB.Id, "ROAD", now, now.AddHours(3)));
+
+        await planningSvc.AssignResourceAsync(leg.Id, new ResourceInput(vehicle.Id, null));
+        await planningSvc.AssignStaffAsync(trip.Id, new StaffInput(leg.Id, Guid.NewGuid(), PlanningConstants.StaffRole.Escort));
+        await planningSvc.AssignHorseAsync(trip.Id, new HorseInput(Guid.NewGuid(), leg.Id, stall.Id));
+
+        await planningSvc.SubmitRouteVersionAsync(version.Id, Guid.NewGuid());
+        await planningSvc.ApproveRouteVersionAsync(version.Id, Guid.NewGuid());
+        await planningSvc.ActivateRouteVersionAsync(version.Id, Guid.NewGuid());
+
+        var trackedTrip = await db.TransportTrips.FirstAsync(t => t.Id == trip.Id);
+        return (trackedTrip, locA, locB, vehicle);
+    }
+
     private class FakeComplianceClient : IComplianceVerificationClient
     {
         public TripComplianceVerificationDto? Result { get; set; }
         public Exception? ThrowsException { get; set; }
+        public int CallCount { get; set; }
+        public ComplianceTripQuery? LastQuery { get; set; }
 
-        public Task<TripComplianceVerificationDto> VerifyTripComplianceAsync(Guid tripId, CancellationToken cancellationToken = default)
+        public Task<TripComplianceVerificationDto> VerifyTripComplianceAsync(ComplianceTripQuery query, CancellationToken cancellationToken = default)
         {
+            CallCount++;
+            LastQuery = query;
             if (ThrowsException != null) throw ThrowsException;
-            return Task.FromResult(Result ?? new TripComplianceVerificationDto(tripId, false, 0, 0, 0, 0, new List<string>(), new List<ComplianceCheckItemDto>(), DateTime.UtcNow));
-        }
-
-        public Task<TripComplianceVerificationDto> VerifyTripComplianceAsync(
-            Guid tripId, Guid originCountryId, Guid destinationCountryId,
-            IReadOnlyList<Guid> horseIds, DateOnly? plannedDepartureDate = null,
-            CancellationToken cancellationToken = default)
-        {
-            return VerifyTripComplianceAsync(tripId, cancellationToken);
+            return Task.FromResult(Result ?? new TripComplianceVerificationDto(query.TripId, false, 0, 0, 0, 0, new List<string>(), new List<ComplianceCheckItemDto>(), DateTime.UtcNow));
         }
     }
 }

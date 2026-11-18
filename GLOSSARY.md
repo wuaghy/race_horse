@@ -23,3 +23,7 @@ _Avoid_: Error, bottleneck, obstacle
 **Dual-Mode Consistency**:
 An architectural pattern combining asynchronous event notification via RabbitMQ for eventual consistency with synchronous gRPC calls for point-in-time authoritative gating.
 _Avoid_: Hybrid messaging, mixed sync-async
+
+**Stateless Protocol Adapter**:
+An infrastructure component that translates internal domain requests to external wire protocols (such as HTTP/2 gRPC) without querying domain database contexts directly.
+_Avoid_: Smart client, database-aware adapter

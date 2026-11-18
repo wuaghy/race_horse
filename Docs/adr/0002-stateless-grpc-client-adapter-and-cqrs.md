@@ -1,0 +1,3 @@
+# 2. Stateless gRPC Client Adapter and CQRS Compliance for Trip Readiness
+
+To strictly adhere to Clean Architecture layer separation and RESTful CQRS principles, we decided that `ComplianceGrpcClient` must act as a pure, stateless protocol adapter without injecting or querying `IPlanningDbContext`. All trip, route, location, and horse parameters are resolved in the Application layer (`TripReadinessService`) before invoking the client. Furthermore, readiness evaluation queries (`GET /trips/{id}/readiness`) remain strictly read-only and idempotent with zero database side-effects, while compliance state updates and audit trail snapshots are committed exclusively within command operations (`ConfirmReadyAsync`).

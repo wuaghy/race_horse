@@ -25,21 +25,57 @@ public class TripReadinessService(
 
         await db.SaveChangesAsync(ct);
 
-        return new TripDto(
-            trip.Id,
-            trip.TripNo,
-            trip.OrderId,
-            trip.Status,
-            trip.PlannedDepartureAt,
-            trip.PlannedArrivalAt,
-            trip.ComplianceReady,
-            trip.CreatedAt,
-            trip.UpdatedAt,
-            trip.VersionNo
-        );
+        return MapTrip(trip);
+    }
+
+    public async Task<ComplianceTripQuery> BuildComplianceQueryAsync(Guid tripId, CancellationToken ct = default)
+    {
+        var trip = await db.TransportTrips.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tripId, ct)
+            ?? throw new NotFoundException("Trip", tripId);
+
+        Guid originCountryId = Guid.Empty;
+        Guid destinationCountryId = Guid.Empty;
+
+        var plan = await db.RoutePlans.AsNoTracking().FirstOrDefaultAsync(p => p.TripId == tripId, ct);
+        if (plan?.ActiveVersionId != null)
+        {
+            var legs = await db.RouteLegs.AsNoTracking()
+                .Where(l => l.RoutePlanVersionId == plan.ActiveVersionId.Value)
+                .OrderBy(l => l.SequenceNo)
+                .ToListAsync(ct);
+
+            if (legs.Count > 0)
+            {
+                var locIds = new[] { legs[0].OriginLocationId, legs[^1].DestinationLocationId };
+                var locs = await db.Locations.AsNoTracking()
+                    .Where(l => locIds.Contains(l.Id))
+                    .ToListAsync(ct);
+
+                originCountryId = locs.FirstOrDefault(l => l.Id == legs[0].OriginLocationId)?.CountryId ?? Guid.Empty;
+                destinationCountryId = locs.FirstOrDefault(l => l.Id == legs[^1].DestinationLocationId)?.CountryId ?? Guid.Empty;
+            }
+        }
+
+        var horseIds = await db.HorseLegAssignments.AsNoTracking()
+            .Where(h => h.TripId == tripId)
+            .Select(h => h.HorseId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        DateOnly? departureDate = trip.PlannedDepartureAt.HasValue
+            ? DateOnly.FromDateTime(trip.PlannedDepartureAt.Value)
+            : null;
+
+        return new ComplianceTripQuery(tripId, originCountryId, destinationCountryId, horseIds, departureDate);
     }
 
     public async Task<TripReadinessResponse> EvaluateReadinessAsync(Guid tripId, CancellationToken ct = default)
+    {
+        var (readiness, _, _) = await EvaluateReadinessInternalAsync(tripId, ct);
+        return readiness;
+    }
+
+    private async Task<(TripReadinessResponse Readiness, bool ComplianceViolation, TripComplianceVerificationDto? ComplianceResult)> EvaluateReadinessInternalAsync(Guid tripId, CancellationToken ct = default)
     {
         var trip = await db.TransportTrips.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tripId, ct)
             ?? throw new NotFoundException("Trip", tripId);
@@ -56,6 +92,7 @@ public class TripReadinessService(
                 .FirstOrDefaultAsync(v => v.Id == plan.ActiveVersionId && v.Status == PlanningConstants.RouteVersionStatus.Active, ct);
         }
 
+        List<RouteLeg> legs = [];
         if (activeVersion is null)
         {
             blockers.Add("Route version chưa ACTIVE");
@@ -63,8 +100,9 @@ public class TripReadinessService(
         else
         {
             // 2. Resource assignment check for all legs in active version
-            var legs = await db.RouteLegs.AsNoTracking()
+            legs = await db.RouteLegs.AsNoTracking()
                 .Where(l => l.RoutePlanVersionId == activeVersion.Id)
+                .OrderBy(l => l.SequenceNo)
                 .ToListAsync(ct);
 
             if (legs.Count == 0)
@@ -110,62 +148,104 @@ public class TripReadinessService(
             blockers.Add($"Horse {h.HorseId} chưa có stall");
         }
 
-        // 5. Compliance check (gRPC pre-flight verification with graceful degradation)
-        var verifiedViaGrpc = false;
-        if (complianceClient != null)
-        {
-            try
-            {
-                var complianceResult = await complianceClient.VerifyTripComplianceAsync(tripId, ct);
-                verifiedViaGrpc = true;
+        // 5. Compliance check (pure read-only via gRPC pre-flight gate with graceful degradation)
+        bool complianceViolation = false;
+        TripComplianceVerificationDto? complianceResult = null;
 
-                if (complianceResult.IsCompliant)
+        if (activeVersion != null && legs.Count > 0 && horseAssignments.Count > 0)
+        {
+            var originLocId = legs[0].OriginLocationId;
+            var destLocId = legs[^1].DestinationLocationId;
+
+            var locIds = new[] { originLocId, destLocId };
+            var locs = await db.Locations.AsNoTracking()
+                .Where(l => locIds.Contains(l.Id))
+                .ToListAsync(ct);
+
+            var originCountryId = locs.FirstOrDefault(l => l.Id == originLocId)?.CountryId ?? Guid.Empty;
+            var destCountryId = locs.FirstOrDefault(l => l.Id == destLocId)?.CountryId ?? Guid.Empty;
+            var horseIds = horseAssignments.Select(h => h.HorseId).Distinct().ToList();
+
+            DateOnly? departureDate = trip.PlannedDepartureAt.HasValue
+                ? DateOnly.FromDateTime(trip.PlannedDepartureAt.Value)
+                : null;
+
+            if (originCountryId != Guid.Empty && destCountryId != Guid.Empty && horseIds.Count > 0)
+            {
+                var query = new ComplianceTripQuery(tripId, originCountryId, destCountryId, horseIds, departureDate);
+                bool verifiedViaGrpc = false;
+
+                if (complianceClient != null)
                 {
-                    if (!trip.ComplianceReady)
+                    try
                     {
-                        var trackedTrip = await db.TransportTrips.FirstOrDefaultAsync(t => t.Id == tripId, ct);
-                        if (trackedTrip != null)
+                        complianceResult = await complianceClient.VerifyTripComplianceAsync(query, ct);
+                        verifiedViaGrpc = true;
+
+                        if (!complianceResult.IsCompliant)
                         {
-                            trackedTrip.ComplianceReady = true;
-                            trackedTrip.UpdatedAt = DateTime.UtcNow;
-                            await db.SaveChangesAsync(ct);
+                            complianceViolation = true;
+                            if (complianceResult.BlockerMessages.Count > 0)
+                            {
+                                blockers.AddRange(complianceResult.BlockerMessages);
+                            }
+                            else
+                            {
+                                blockers.Add("Compliance chưa ready");
+                            }
                         }
                     }
-                }
-                else
-                {
-                    if (complianceResult.BlockerMessages.Count > 0)
+                    catch (Exception ex)
                     {
-                        blockers.AddRange(complianceResult.BlockerMessages);
+                        logger?.LogWarning(ex, "gRPC compliance verification failed for TripId {TripId}. Falling back to cached local state.", tripId);
                     }
-                    else
+                }
+
+                if (!verifiedViaGrpc)
+                {
+                    if (!trip.ComplianceReady)
                     {
                         blockers.Add("Compliance chưa ready");
                     }
                 }
             }
-            catch (Exception ex)
+            else
             {
-                logger?.LogWarning(ex, "gRPC compliance verification failed for TripId {TripId}. Falling back to cached local state.", tripId);
+                if (!trip.ComplianceReady)
+                {
+                    blockers.Add("Compliance chưa ready");
+                }
             }
         }
-
-        if (!verifiedViaGrpc)
+        else
         {
+            // Route version, legs, or horses missing: do not query Compliance with blank data
             if (!trip.ComplianceReady)
             {
                 blockers.Add("Compliance chưa ready");
             }
         }
 
-        return new TripReadinessResponse(tripId, blockers.Count == 0, blockers);
+        return (new TripReadinessResponse(tripId, blockers.Count == 0, blockers), complianceViolation, complianceResult);
     }
 
     public async Task<TripDto> ConfirmReadyAsync(Guid tripId, Guid actorUserId, CancellationToken ct = default)
     {
-        var readiness = await EvaluateReadinessAsync(tripId, ct);
+        var (readiness, complianceViolation, complianceResult) = await EvaluateReadinessInternalAsync(tripId, ct);
         if (!readiness.Ready)
         {
+            // Rigorous cache invalidation: if gRPC reported compliance violation, invalidate local ComplianceReady flag
+            if (complianceViolation)
+            {
+                var unreadyTrip = await db.TransportTrips.FirstOrDefaultAsync(t => t.Id == tripId, ct);
+                if (unreadyTrip != null && unreadyTrip.ComplianceReady)
+                {
+                    unreadyTrip.ComplianceReady = false;
+                    unreadyTrip.UpdatedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync(ct);
+                }
+            }
+
             var errors = readiness.Blockers
                 .Select(b => new ApiError { Field = "blockers", Reason = "TRIP_NOT_READY", Message = b })
                 .ToList();
@@ -188,10 +268,27 @@ public class TripReadinessService(
 
         var oldState = trip.Status;
         trip.Status = PlanningConstants.TripStatus.Ready;
+        trip.ComplianceReady = true;
         trip.UpdatedAt = DateTime.UtcNow;
         trip.VersionNo++;
 
-        // Audit Log
+        // Audit Log with compliance telemetry snapshot in Payload
+        var complianceSummary = complianceResult != null
+            ? $"gRPC verified: Compliant={complianceResult.IsCompliant}, Met={complianceResult.TotalMet}/{complianceResult.TotalRequired}, Missing={complianceResult.TotalMissing}"
+            : (trip.ComplianceReady ? "Compliance verified via cached state." : "Compliance verified.");
+
+        var auditPayload = JsonSerializer.Serialize(new
+        {
+            complianceVerified = complianceResult != null,
+            isCompliant = complianceResult?.IsCompliant ?? trip.ComplianceReady,
+            totalRequired = complianceResult?.TotalRequired ?? 0,
+            totalMet = complianceResult?.TotalMet ?? 0,
+            totalMissing = complianceResult?.TotalMissing ?? 0,
+            totalExpired = complianceResult?.TotalExpired ?? 0,
+            evaluatedAt = complianceResult?.EvaluatedAt ?? DateTime.UtcNow,
+            summary = complianceSummary
+        });
+
         db.AuditLogs.Add(new AuditLog
         {
             EntityType = "TransportTrip",
@@ -200,6 +297,8 @@ public class TripReadinessService(
             OldState = oldState,
             NewState = PlanningConstants.TripStatus.Ready,
             ActorUserId = actorUserId,
+            Reason = complianceSummary,
+            Payload = auditPayload,
             CorrelationId = Guid.NewGuid(),
             OccurredAt = DateTime.UtcNow
         });

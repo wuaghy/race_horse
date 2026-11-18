@@ -1,5 +1,5 @@
 using Compliance.Grpc;
-using Microsoft.EntityFrameworkCore;
+using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Planning.Application.Abstractions;
 using Planning.Application.DTOs.Readiness;
@@ -9,44 +9,42 @@ namespace Planning.Infrastructure.Clients;
 public class ComplianceGrpcClient : IComplianceVerificationClient
 {
     private readonly ComplianceRpc.ComplianceRpcClient _client;
-    private readonly IPlanningDbContext _db;
     private readonly ILogger<ComplianceGrpcClient> _logger;
 
     public ComplianceGrpcClient(
         ComplianceRpc.ComplianceRpcClient client,
-        IPlanningDbContext db,
         ILogger<ComplianceGrpcClient> logger)
     {
         _client = client;
-        _db = db;
         _logger = logger;
     }
 
     public async Task<TripComplianceVerificationDto> VerifyTripComplianceAsync(
-        Guid tripId,
-        Guid originCountryId,
-        Guid destinationCountryId,
-        IReadOnlyList<Guid> horseIds,
-        DateOnly? plannedDepartureDate = null,
+        ComplianceTripQuery query,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Dispatching gRPC VerifyTripCompliance request for TripId {TripId} (Origin: {Origin}, Destination: {Dest}, Horses: {Count})",
-            tripId, originCountryId, destinationCountryId, horseIds.Count);
+            query.TripId, query.OriginCountryId, query.DestinationCountryId, query.HorseIds.Count);
 
         var request = new VerifyTripComplianceRequest
         {
-            TripId = tripId.ToString(),
-            OriginCountryId = originCountryId == Guid.Empty ? string.Empty : originCountryId.ToString(),
-            DestinationCountryId = destinationCountryId == Guid.Empty ? string.Empty : destinationCountryId.ToString(),
-            PlannedDepartureDate = plannedDepartureDate?.ToString("yyyy-MM-dd") ?? string.Empty
+            TripId = query.TripId.ToString(),
+            OriginCountryId = query.OriginCountryId == Guid.Empty ? string.Empty : query.OriginCountryId.ToString(),
+            DestinationCountryId = query.DestinationCountryId == Guid.Empty ? string.Empty : query.DestinationCountryId.ToString(),
+            PlannedDepartureDate = query.PlannedDepartureDate?.ToString("yyyy-MM-dd") ?? string.Empty
         };
 
-        foreach (var horseId in horseIds)
+        foreach (var horseId in query.HorseIds)
         {
             request.HorseIds.Add(horseId.ToString());
         }
 
-        var response = await _client.VerifyTripComplianceAsync(request, cancellationToken: cancellationToken);
+        var callOptions = new CallOptions(
+            deadline: DateTime.UtcNow.AddSeconds(5),
+            cancellationToken: cancellationToken
+        );
+
+        var response = await _client.VerifyTripComplianceAsync(request, callOptions);
 
         var checkItems = response.CheckItems.Select(item => new ComplianceCheckItemDto(
             item.DocumentTypeCode,
@@ -61,7 +59,7 @@ public class ComplianceGrpcClient : IComplianceVerificationClient
         var evaluatedAt = DateTime.TryParse(response.EvaluatedAt, out var dt) ? dt : DateTime.UtcNow;
 
         var dto = new TripComplianceVerificationDto(
-            Guid.TryParse(response.TripId, out var parsedId) ? parsedId : tripId,
+            Guid.TryParse(response.TripId, out var parsedId) ? parsedId : query.TripId,
             response.IsCompliant,
             response.TotalRequired,
             response.TotalMet,
@@ -73,54 +71,8 @@ public class ComplianceGrpcClient : IComplianceVerificationClient
         );
 
         _logger.LogInformation("gRPC VerifyTripCompliance response for TripId {TripId}: Compliant={IsCompliant}, Met={Met}/{Total}, Blockers={BlockerCount}",
-            tripId, dto.IsCompliant, dto.TotalMet, dto.TotalRequired, dto.BlockerMessages.Count);
+            query.TripId, dto.IsCompliant, dto.TotalMet, dto.TotalRequired, dto.BlockerMessages.Count);
 
         return dto;
-    }
-
-    public async Task<TripComplianceVerificationDto> VerifyTripComplianceAsync(
-        Guid tripId,
-        CancellationToken cancellationToken = default)
-    {
-        var trip = await _db.TransportTrips.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tripId, cancellationToken);
-        var horseIds = await _db.HorseLegAssignments.AsNoTracking()
-            .Where(h => h.TripId == tripId)
-            .Select(h => h.HorseId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        Guid originCountryId = Guid.Empty;
-        Guid destinationCountryId = Guid.Empty;
-
-        var plan = await _db.RoutePlans.AsNoTracking().FirstOrDefaultAsync(p => p.TripId == tripId, cancellationToken);
-        if (plan?.ActiveVersionId != null)
-        {
-            var legs = await _db.RouteLegs.AsNoTracking()
-                .Where(l => l.RoutePlanVersionId == plan.ActiveVersionId.Value)
-                .OrderBy(l => l.SequenceNo)
-                .ToListAsync(cancellationToken);
-
-            if (legs.Count > 0)
-            {
-                var originLocId = legs[0].OriginLocationId;
-                var destLocId = legs[^1].DestinationLocationId;
-
-                originCountryId = await _db.Locations.AsNoTracking()
-                    .Where(l => l.Id == originLocId)
-                    .Select(l => l.CountryId)
-                    .FirstOrDefaultAsync(cancellationToken);
-
-                destinationCountryId = await _db.Locations.AsNoTracking()
-                    .Where(l => l.Id == destLocId)
-                    .Select(l => l.CountryId)
-                    .FirstOrDefaultAsync(cancellationToken);
-            }
-        }
-
-        DateOnly? departureDate = trip?.PlannedDepartureAt.HasValue == true
-            ? DateOnly.FromDateTime(trip.PlannedDepartureAt.Value)
-            : null;
-
-        return await VerifyTripComplianceAsync(tripId, originCountryId, destinationCountryId, horseIds, departureDate, cancellationToken);
     }
 }

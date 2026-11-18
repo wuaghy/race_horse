@@ -255,6 +255,7 @@ public sealed class AuditLog : Entity
     public string? NewState { get; set; }
     public Guid ActorUserId { get; set; }
     public string? Reason { get; set; }
+    public string? Payload { get; set; }
     public Guid? CorrelationId { get; set; }
     public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

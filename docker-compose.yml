@@ -158,7 +158,6 @@ services:
       RabbitMQ__UserName: ${RABBITMQ_DEFAULT_USER:-guest}
       RabbitMQ__Password: ${RABBITMQ_DEFAULT_PASS:-guest}
       RabbitMQ__ExchangeName: racehorse.events
-      GrpcServices__ComplianceUrl: "http://compliance:8083"
     ports:
       - "${TRACKING_PORT:-8084}:8080"
     networks:

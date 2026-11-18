@@ -8,4 +8,5 @@ public interface ITripReadinessService
     Task<TripDto> SetComplianceReadyAsync(Guid tripId, CancellationToken ct = default);
     Task<TripReadinessResponse> EvaluateReadinessAsync(Guid tripId, CancellationToken ct = default);
     Task<TripDto> ConfirmReadyAsync(Guid tripId, Guid actorUserId, CancellationToken ct = default);
+    Task<ComplianceTripQuery> BuildComplianceQueryAsync(Guid tripId, CancellationToken ct = default);
 }
